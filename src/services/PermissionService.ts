@@ -1,10 +1,10 @@
-import { Platform, Linking, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
+import { AppBlocker, DeviceAdmin } from '../modules';
 
 export type PermissionType =
   | 'usageStats'
   | 'overlay'
   | 'accessibility'
-  | 'vpn'
   | 'deviceAdmin';
 
 export interface PermissionStatus {
@@ -13,15 +13,11 @@ export interface PermissionStatus {
 }
 
 export const PermissionService = {
-  // Check if a specific permission is granted
-  // Note: These checks require native modules that will be implemented in Phase 2
   async checkPermission(permission: PermissionType): Promise<PermissionStatus> {
     if (Platform.OS !== 'android') {
       return { granted: false, canAskAgain: false };
     }
 
-    // Placeholder implementation
-    // In a real app with native modules, we would check actual permissions
     switch (permission) {
       case 'usageStats':
         return this.checkUsageStatsPermission();
@@ -29,8 +25,6 @@ export const PermissionService = {
         return this.checkOverlayPermission();
       case 'accessibility':
         return this.checkAccessibilityPermission();
-      case 'vpn':
-        return this.checkVpnPermission();
       case 'deviceAdmin':
         return this.checkDeviceAdminPermission();
       default:
@@ -38,13 +32,11 @@ export const PermissionService = {
     }
   },
 
-  // Check all required permissions
   async checkAllPermissions(): Promise<Record<PermissionType, PermissionStatus>> {
     const permissions: PermissionType[] = [
       'usageStats',
       'overlay',
       'accessibility',
-      'vpn',
       'deviceAdmin',
     ];
 
@@ -57,7 +49,6 @@ export const PermissionService = {
     return results as Record<PermissionType, PermissionStatus>;
   },
 
-  // Request a specific permission
   async requestPermission(permission: PermissionType): Promise<boolean> {
     if (Platform.OS !== 'android') {
       return false;
@@ -70,8 +61,6 @@ export const PermissionService = {
         return this.requestOverlayPermission();
       case 'accessibility':
         return this.requestAccessibilityPermission();
-      case 'vpn':
-        return this.requestVpnPermission();
       case 'deviceAdmin':
         return this.requestDeviceAdminPermission();
       default:
@@ -79,96 +68,54 @@ export const PermissionService = {
     }
   },
 
-  // Usage Stats Permission
+  // --- Usage Stats ---
+
   async checkUsageStatsPermission(): Promise<PermissionStatus> {
-    // In real implementation, check via native module
-    // AppBlockerModule.hasUsageStatsPermission()
-    return { granted: false, canAskAgain: true };
+    const granted = await AppBlocker.hasUsageStatsPermission();
+    return { granted, canAskAgain: true };
   },
 
   async requestUsageStatsPermission(): Promise<boolean> {
-    try {
-      // Open Usage Stats settings
-      await Linking.openSettings();
-      // In real implementation, we'd deep link to:
-      // 'android.settings.USAGE_ACCESS_SETTINGS'
-      return true;
-    } catch (error) {
-      console.error('Error opening usage stats settings:', error);
-      return false;
-    }
+    return AppBlocker.openUsageStatsSettings();
   },
 
-  // Overlay Permission
+  // --- Overlay ---
+
   async checkOverlayPermission(): Promise<PermissionStatus> {
-    // In real implementation, check via native module
-    // Settings.canDrawOverlays(context)
-    return { granted: false, canAskAgain: true };
+    const granted = await AppBlocker.hasOverlayPermission();
+    return { granted, canAskAgain: true };
   },
 
   async requestOverlayPermission(): Promise<boolean> {
-    try {
-      // Open Overlay settings
-      // 'android.settings.ACTION_MANAGE_OVERLAY_PERMISSION'
-      await Linking.openSettings();
-      return true;
-    } catch (error) {
-      console.error('Error opening overlay settings:', error);
-      return false;
-    }
+    return AppBlocker.openOverlaySettings();
   },
 
-  // Accessibility Permission
+  // --- Accessibility ---
+
   async checkAccessibilityPermission(): Promise<PermissionStatus> {
-    // In real implementation, check via native module
-    return { granted: false, canAskAgain: true };
+    const granted = await AppBlocker.isAccessibilityServiceEnabled();
+    return { granted, canAskAgain: true };
   },
 
   async requestAccessibilityPermission(): Promise<boolean> {
-    try {
-      // Open Accessibility settings
-      // 'android.settings.ACCESSIBILITY_SETTINGS'
-      await Linking.openSettings();
-      return true;
-    } catch (error) {
-      console.error('Error opening accessibility settings:', error);
-      return false;
-    }
+    return AppBlocker.openAccessibilitySettings();
   },
 
-  // VPN Permission
-  async checkVpnPermission(): Promise<PermissionStatus> {
-    // VPN permission is granted at runtime when starting VPN service
-    return { granted: false, canAskAgain: true };
-  },
+  // --- Device Admin ---
 
-  async requestVpnPermission(): Promise<boolean> {
-    // VPN permission is requested by the VPN service
-    // This would trigger the VPN dialog
-    return true;
-  },
-
-  // Device Admin Permission
   async checkDeviceAdminPermission(): Promise<PermissionStatus> {
-    // In real implementation, check via native module
-    return { granted: false, canAskAgain: true };
+    const granted = await DeviceAdmin.isDeviceAdminActive();
+    return { granted, canAskAgain: true };
   },
 
   async requestDeviceAdminPermission(): Promise<boolean> {
-    try {
-      // Open Device Admin settings
-      // 'android.app.action.ADD_DEVICE_ADMIN'
-      await Linking.openSettings();
-      return true;
-    } catch (error) {
-      console.error('Error opening device admin settings:', error);
-      return false;
-    }
+    return DeviceAdmin.requestDeviceAdmin();
   },
 
-  // Check if app has minimum required permissions to function
+  // --- Helpers ---
+
   async hasMinimumPermissions(): Promise<boolean> {
-    const required: PermissionType[] = ['usageStats', 'overlay'];
+    const required: PermissionType[] = ['usageStats', 'overlay', 'accessibility'];
 
     for (const permission of required) {
       const status = await this.checkPermission(permission);
@@ -180,7 +127,6 @@ export const PermissionService = {
     return true;
   },
 
-  // Get human-readable permission description
   getPermissionInfo(permission: PermissionType): {
     titleKey: string;
     descriptionKey: string;
@@ -205,12 +151,6 @@ export const PermissionService = {
         descriptionKey: 'onboarding.accessibilityServiceDescription',
         emoji: '♿',
         required: true,
-      },
-      vpn: {
-        titleKey: 'onboarding.vpnPermission',
-        descriptionKey: 'onboarding.vpnPermissionDescription',
-        emoji: '🔒',
-        required: false,
       },
       deviceAdmin: {
         titleKey: 'settings.pinProtection',

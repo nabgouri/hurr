@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Ban,
   List,
@@ -52,12 +53,13 @@ const TabIcon = ({ name, focused, color }: TabIconProps) => {
 
 export default function TabNavigator() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8), height: 62 + insets.bottom }],
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
@@ -103,8 +105,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 8,
-    paddingBottom: 8,
-    height: 70,
     elevation: 8,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: -2 },

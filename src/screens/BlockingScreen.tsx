@@ -4,242 +4,169 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
-  TextInput,
   Modal,
   TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import {
   Ban,
   Shield,
-  Palette,
-  X,
+  ShieldCheck,
+  Lock,
+  Clock,
 } from 'lucide-react-native';
 import { colors, fonts, fontSizes, globalStyles } from '../theme';
 import SectionCard from '../components/SectionCard';
 import ToggleItem from '../components/ToggleItem';
-import EditableItem from '../components/EditableItem';
-import { WebBlocker } from '../modules';
-import { StorageService, WebBlockerConfig } from '../services/StorageService';
-import { allAdultKeywords, adultDomains } from '../data/adultBlocklist';
+import { AppBlocker, DeviceAdmin } from '../modules';
+import { useOnAppActive } from '../contexts/AppStateContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const PROTECTION_END_KEY = 'uninstall_protection_end';
+const PROTECTION_DAYS_KEY = 'uninstall_protection_days';
+
+const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
 
 export default function BlockingScreen() {
   const { t } = useTranslation();
 
-  // Functional state - adult content blocking
-  const [adultContentBlocked, setAdultContentBlocked] = useState(false);
-  const [isVpnActive, setIsVpnActive] = useState(false);
+  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Web blocker config
-  const [webBlockerConfig, setWebBlockerConfig] = useState<WebBlockerConfig>({
-    message: t('blocking.defaultBlockedMessage'),
-    countdownSeconds: 3,
-    redirectUrl: 'https://google.com',
-  });
+  // Uninstall protection state
+  const [isDeviceAdminActive, setIsDeviceAdminActive] = useState(false);
+  const [protectionEndDate, setProtectionEndDate] = useState<number | null>(null);
+  const [daysRemaining, setDaysRemaining] = useState(0);
+  const [showDaysModal, setShowDaysModal] = useState(false);
+  const [selectedDays, setSelectedDays] = useState<number>(30);
 
-  // Modal states for editing
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editField, setEditField] = useState<'message' | 'countdown' | 'redirect' | null>(null);
-  const [editValue, setEditValue] = useState('');
-
-  // Placeholder states (non-functional, just for structure)
+  // Placeholder states (future features)
   const [imageVideoSearchBlocked, setImageVideoSearchBlocked] = useState(false);
   const [facebookReelsBlocked, setFacebookReelsBlocked] = useState(false);
   const [youtubeShortsBlocked, setYoutubeShortsBlocked] = useState(false);
   const [whatsappChannelsBlocked, setWhatsappChannelsBlocked] = useState(false);
   const [telegramSearchBlocked, setTelegramSearchBlocked] = useState(false);
-
-  // Advanced blocking states (placeholder)
-  const [uninstallProtection, setUninstallProtection] = useState(false);
   const [blockUnsupportedBrowsers, setBlockUnsupportedBrowsers] = useState(false);
   const [blockNewlyInstalledApps, setBlockNewlyInstalledApps] = useState(false);
 
-  // Load initial state
-  useEffect(() => {
-    loadInitialState();
-  }, []);
-
-  const loadInitialState = async () => {
+  const checkStatus = useCallback(async () => {
     try {
       setIsLoading(true);
+      const enabled = await AppBlocker.isAccessibilityServiceEnabled();
+      setIsAccessibilityEnabled(enabled);
 
-      // Load settings
-      const settings = await StorageService.getSettings();
-      setAdultContentBlocked(settings.adultContentBlocked);
+      // Check device admin status
+      const adminActive = await DeviceAdmin.isDeviceAdminActive();
+      setIsDeviceAdminActive(adminActive);
 
-      // Load web blocker config
-      const config = await StorageService.getWebBlockerConfig();
-      setWebBlockerConfig(config);
+      // Load protection end date
+      const endStr = await AsyncStorage.getItem(PROTECTION_END_KEY);
+      if (endStr) {
+        const endDate = parseInt(endStr, 10);
+        setProtectionEndDate(endDate);
+        const remaining = Math.max(0, Math.ceil((endDate - Date.now()) / (1000 * 60 * 60 * 24)));
+        setDaysRemaining(remaining);
 
-      // Check VPN status
-      if (WebBlocker.isAvailable()) {
-        const vpnActive = await WebBlocker.isVpnActive();
-        setIsVpnActive(vpnActive);
-
-        // Sync native module with stored settings if VPN is active
-        if (vpnActive) {
-          await syncNativeConfig(config);
+        // If expired, auto-remove device admin
+        if (remaining <= 0 && adminActive) {
+          await clearProtectionState();
         }
       }
     } catch (error) {
-      console.error('Error loading initial state:', error);
+      console.error('Error checking status:', error);
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+  }, [checkStatus]);
+
+  useOnAppActive(checkStatus);
+
+  const clearProtectionState = async () => {
+    await DeviceAdmin.removeDeviceAdmin();
+    setIsDeviceAdminActive(false);
+    await AsyncStorage.removeItem(PROTECTION_END_KEY);
+    await AsyncStorage.removeItem(PROTECTION_DAYS_KEY);
+    setProtectionEndDate(null);
+    setDaysRemaining(0);
   };
 
-  const syncNativeConfig = async (config: WebBlockerConfig) => {
-    if (!WebBlocker.isAvailable()) return;
+  const handleAdultContentToggle = async () => {
+    await AppBlocker.openAccessibilitySettings();
+  };
 
-    try {
-      // Set blocking screen config
-      await WebBlocker.setBlockingScreenConfig(
-        config.message,
-        config.countdownSeconds,
-        config.redirectUrl
-      );
-
-      // Set blocked domains and keywords
-      await WebBlocker.setBlockedDomains(adultDomains);
-      await WebBlocker.setBlockedKeywords(allAdultKeywords);
-    } catch (error) {
-      console.error('Error syncing native config:', error);
+  const handleUninstallProtectionToggle = async (value: boolean) => {
+    if (value) {
+      // Show days selection modal
+      setSelectedDays(30);
+      setShowDaysModal(true);
+    } else {
+      await clearProtectionState();
     }
   };
 
-  const handleAdultContentToggle = async (value: boolean) => {
-    if (!WebBlocker.isAvailable()) {
-      Alert.alert(
-        t('common.error'),
-        'VPN module not available on this device'
-      );
-      return;
-    }
+  const handleActivateProtection = async () => {
+    setShowDaysModal(false);
 
-    setAdultContentBlocked(value);
-
-    try {
-      if (value) {
-        // Start VPN
-        const started = await WebBlocker.startVpn();
-        if (started) {
-          setIsVpnActive(true);
-
-          // Configure the VPN with current settings
-          await syncNativeConfig(webBlockerConfig);
-          await WebBlocker.setAdultContentBlocked(true);
-
-          // Save settings
-          await StorageService.setSettings({ adultContentBlocked: true, vpnEnabled: true });
-        } else {
-          // User denied VPN permission or error occurred
-          setAdultContentBlocked(false);
-          Alert.alert(
-            t('common.error'),
-            t('onboarding.vpnPermissionDescription')
-          );
-        }
-      } else {
-        // Stop VPN
-        await WebBlocker.stopVpn();
-        setIsVpnActive(false);
-        await WebBlocker.setAdultContentBlocked(false);
-
-        // Save settings
-        await StorageService.setSettings({ adultContentBlocked: false, vpnEnabled: false });
-      }
-    } catch (error) {
-      console.error('Error toggling adult content blocking:', error);
-      setAdultContentBlocked(!value); // Revert on error
+    const granted = await DeviceAdmin.requestDeviceAdmin();
+    if (granted) {
+      const endDate = Date.now() + selectedDays * 24 * 60 * 60 * 1000;
+      await AsyncStorage.setItem(PROTECTION_END_KEY, endDate.toString());
+      await AsyncStorage.setItem(PROTECTION_DAYS_KEY, selectedDays.toString());
+      // Sync to native SharedPreferences so the accessibility service can read it
+      await AppBlocker.setUninstallProtectionEnd(endDate);
+      setProtectionEndDate(endDate);
+      setDaysRemaining(selectedDays);
+      setIsDeviceAdminActive(true);
     }
   };
 
-  const openEditModal = (field: 'message' | 'countdown' | 'redirect') => {
-    setEditField(field);
-    switch (field) {
-      case 'message':
-        setEditValue(webBlockerConfig.message);
-        break;
-      case 'countdown':
-        setEditValue(webBlockerConfig.countdownSeconds.toString());
-        break;
-      case 'redirect':
-        setEditValue(webBlockerConfig.redirectUrl);
-        break;
-    }
-    setEditModalVisible(true);
+  const getProtectionSubtitle = () => {
+    if (!isDeviceAdminActive || !protectionEndDate) return undefined;
+    if (daysRemaining <= 0) return t('blocking.uninstallProtectionExpired');
+    return t('blocking.uninstallProtectionActive', { days: daysRemaining });
   };
 
-  const handleSaveEdit = async () => {
-    if (!editField) return;
-
-    let newConfig = { ...webBlockerConfig };
-
-    switch (editField) {
-      case 'message':
-        newConfig.message = editValue.trim() || t('blocking.defaultBlockedMessage');
-        break;
-      case 'countdown':
-        const countdown = parseInt(editValue, 10);
-        newConfig.countdownSeconds = isNaN(countdown) || countdown < 0 ? 3 : countdown;
-        break;
-      case 'redirect':
-        let url = editValue.trim();
-        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
-          url = 'https://' + url;
-        }
-        newConfig.redirectUrl = url || 'https://google.com';
-        break;
-    }
-
-    setWebBlockerConfig(newConfig);
-    setEditModalVisible(false);
-
-    // Save to storage
-    await StorageService.setWebBlockerConfig(newConfig);
-
-    // Sync with native if VPN is active
-    if (isVpnActive) {
-      await syncNativeConfig(newConfig);
-    }
-  };
-
-  const getCountdownDisplay = () => {
-    const seconds = webBlockerConfig.countdownSeconds;
-    return `${seconds} ${seconds === 1 ? t('blocking.second') : t('blocking.seconds')}`;
-  };
-
-  const getEditModalTitle = () => {
-    switch (editField) {
-      case 'message':
-        return t('blocking.blockedScreenMessage');
-      case 'countdown':
-        return t('blocking.blockedScreenCountdown');
-      case 'redirect':
-        return t('blocking.redirectUrl');
-      default:
-        return '';
-    }
-  };
+  // Derive status for header badge
+  const activeFeatures = [isAccessibilityEnabled, isDeviceAdminActive].filter(Boolean).length;
 
   return (
     <SafeAreaView style={globalStyles.safeArea}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {/* Header */}
         <View style={styles.header}>
-          <Ban size={28} color={colors.primary} strokeWidth={1.5} />
-          <Text style={styles.title}>{t('blocking.title')}</Text>
+          <View style={styles.headerTop}>
+            <Ban size={26} color={colors.primary} strokeWidth={1.5} />
+            <Text style={styles.title}>{t('blocking.title')}</Text>
+          </View>
+          {activeFeatures > 0 && (
+            <View style={styles.statusBadge}>
+              <ShieldCheck size={14} color={colors.protected} strokeWidth={2} />
+              <Text style={styles.statusText}>
+                {t('blocking.activeFeaturesCount', { count: activeFeatures })}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Content Blocking Section */}
         <SectionCard icon={Shield} title={t('blocking.contentBlocking')}>
           <ToggleItem
             title={t('blocking.blockAdultContent')}
-            subtitle={isVpnActive ? t('blocking.vpnActive') : undefined}
-            value={adultContentBlocked}
+            subtitle={
+              isAccessibilityEnabled
+                ? t('blocking.vpnActive')
+                : undefined
+            }
+            value={isAccessibilityEnabled}
             onValueChange={handleAdultContentToggle}
             disabled={isLoading}
           />
@@ -276,13 +203,13 @@ export default function BlockingScreen() {
         </SectionCard>
 
         {/* Advanced Blocking Section */}
-        <SectionCard icon={Shield} title={t('blocking.advancedBlocking')}>
+        <SectionCard icon={Lock} title={t('blocking.advancedBlocking')}>
           <ToggleItem
             title={t('blocking.uninstallProtection')}
-            subtitle={t('blocking.completedDays', { days: 0, total: 90 })}
-            value={uninstallProtection}
-            onValueChange={setUninstallProtection}
-            disabled
+            subtitle={getProtectionSubtitle()}
+            value={isDeviceAdminActive}
+            onValueChange={handleUninstallProtectionToggle}
+            disabled={isLoading}
           />
           <ToggleItem
             title={t('blocking.blockUnsupportedBrowsers')}
@@ -298,77 +225,91 @@ export default function BlockingScreen() {
           />
         </SectionCard>
 
-        {/* Customize Blocked Screen Section */}
-        <SectionCard icon={Palette} title={t('blocking.customizeBlockedScreen')}>
-          <EditableItem
-            title={t('blocking.blockedScreenMessage')}
-            value={webBlockerConfig.message}
-            onPress={() => openEditModal('message')}
-          />
-          <EditableItem
-            title={t('blocking.blockedScreenCountdown')}
-            value={getCountdownDisplay()}
-            onPress={() => openEditModal('countdown')}
-          />
-          <EditableItem
-            title={t('blocking.redirectUrl')}
-            value={webBlockerConfig.redirectUrl}
-            onPress={() => openEditModal('redirect')}
-          />
-        </SectionCard>
-
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Edit Modal */}
+      {/* Days Selection Modal */}
       <Modal
-        visible={editModalVisible}
-        animationType="slide"
+        visible={showDaysModal}
         transparent
-        onRequestClose={() => setEditModalVisible(false)}
+        animationType="fade"
+        onRequestClose={() => setShowDaysModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{getEditModalTitle()}</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <X size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowDaysModal(false)}>
+          <Pressable style={styles.modalContent} onPress={() => {}}>
+            {/* Modal Icon */}
+            <View style={styles.modalIconWrap}>
+              <Clock size={28} color={colors.primary} strokeWidth={1.5} />
             </View>
 
-            <TextInput
-              style={styles.modalInput}
-              value={editValue}
-              onChangeText={setEditValue}
-              placeholder={getEditModalTitle()}
-              placeholderTextColor={colors.textSecondary}
-              keyboardType={editField === 'countdown' ? 'numeric' : 'default'}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline={editField === 'message'}
-              numberOfLines={editField === 'message' ? 3 : 1}
-            />
+            <Text style={styles.modalTitle}>{t('blocking.selectProtectionDays')}</Text>
+            <Text selectable style={styles.modalDesc}>
+              {t('blocking.selectProtectionDaysDesc')}
+            </Text>
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveEdit}>
-              <Text style={styles.saveButtonText}>{t('common.save')}</Text>
+            <View style={styles.daysGrid}>
+              {DAY_OPTIONS.map((days) => {
+                const isSelected = selectedDays === days;
+                return (
+                  <TouchableOpacity
+                    key={days}
+                    style={[
+                      styles.dayOption,
+                      isSelected && styles.dayOptionSelected,
+                    ]}
+                    onPress={() => setSelectedDays(days)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.dayOptionText,
+                        isSelected && styles.dayOptionTextSelected,
+                      ]}
+                    >
+                      {t(`blocking.days${days}`)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.activateButton}
+              onPress={handleActivateProtection}
+              activeOpacity={0.8}
+            >
+              <ShieldCheck size={18} color={colors.textOnPrimary} strokeWidth={2} />
+              <Text style={styles.activateButtonText}>{t('blocking.activate')}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowDaysModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  scrollContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   title: {
@@ -376,52 +317,131 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.xxl,
     color: colors.textPrimary,
   },
-  bottomPadding: {
-    height: 40,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.protectedBackground,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: colors.protectedLight + '40',
   },
+  statusText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes.xs,
+    color: colors.protected,
+    fontVariant: ['tabular-nums'],
+  },
+  bottomPadding: {
+    height: 8,
+  },
+
+  // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: colors.overlay,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderCurve: 'continuous',
+    padding: 28,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
+  },
+  modalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderCurve: 'continuous',
+    backgroundColor: colors.surfaceVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
     fontFamily: fonts.bold,
-    fontSize: fontSizes.lg,
+    fontSize: fontSizes.xl,
     color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 6,
   },
-  modalInput: {
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
+  modalDesc: {
     fontFamily: fonts.regular,
-    fontSize: fontSizes.md,
-    color: colors.textPrimary,
-    textAlign: 'right',
-    marginBottom: 20,
-    minHeight: 50,
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: fontSizes.sm * 1.6,
+    marginBottom: 24,
   },
-  saveButton: {
-    backgroundColor: colors.primary,
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 28,
+    width: '100%',
+  },
+  dayOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderRadius: 12,
-    padding: 16,
+    borderCurve: 'continuous',
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.background,
+    minWidth: 85,
     alignItems: 'center',
   },
-  saveButtonText: {
+  dayOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.protectedBackground,
+    boxShadow: '0 0 0 1px ' + colors.primaryLight + '40',
+  },
+  dayOptionText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  dayOptionTextSelected: {
+    color: colors.primary,
+    fontFamily: fonts.bold,
+  },
+  activateButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    marginBottom: 10,
+    boxShadow: '0 2px 8px ' + colors.primary + '30',
+  },
+  activateButtonText: {
     fontFamily: fonts.bold,
     fontSize: fontSizes.md,
-    color: colors.white,
+    color: colors.textOnPrimary,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    width: '100%',
+  },
+  cancelButtonText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes.md,
+    color: colors.textMuted,
   },
 });

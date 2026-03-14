@@ -56,9 +56,6 @@ export default function RootNavigator({ isFirstLaunch }: RootNavigatorProps) {
       <Stack.Screen
         name="PermissionSetup"
         component={PermissionSetupScreen}
-        options={{
-          presentation: 'modal',
-        }}
       />
     </Stack.Navigator>
   );

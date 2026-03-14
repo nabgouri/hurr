@@ -1,6 +1,35 @@
-import { NativeModules, Platform, NativeEventEmitter } from 'react-native';
+import { NativeModules, TurboModuleRegistry, Platform, NativeEventEmitter, type TurboModule } from 'react-native';
 
-const { AppBlockerModule } = NativeModules;
+interface AppBlockerModuleSpec extends TurboModule {
+  addListener(eventName: string): void;
+  removeListeners(count: number): void;
+  hasUsageStatsPermission(): Promise<boolean>;
+  openUsageStatsSettings(): Promise<boolean>;
+  hasOverlayPermission(): Promise<boolean>;
+  openOverlaySettings(): Promise<boolean>;
+  isAccessibilityServiceEnabled(): Promise<boolean>;
+  openAccessibilitySettings(): Promise<boolean>;
+  setBlockedApps(packageNames: string[]): Promise<boolean>;
+  getBlockedApps(): Promise<string[]>;
+  blockApp(packageName: string): Promise<boolean>;
+  unblockApp(packageName: string): Promise<boolean>;
+  isAppBlocked(packageName: string): Promise<boolean>;
+  getInstalledApps(): Promise<InstalledApp[]>;
+  setBlockedKeywords(keywords: string[]): Promise<boolean>;
+  getBlockedKeywords(): Promise<string[]>;
+  setBlockedDomains(domains: string[]): Promise<boolean>;
+  getBlockedDomains(): Promise<string[]>;
+  setPartnerConfig(type: string, email: string | null, timeDelay: number): Promise<boolean>;
+  getPartnerConfig(): Promise<{ type: string | null; email: string | null; timeDelay: number }>;
+  setUninstallProtectionEnd(endDateMs: number): Promise<boolean>;
+  requestIgnoreBatteryOptimization(): Promise<boolean>;
+}
+
+// TurboModuleRegistry first (lazy-loaded), fallback to legacy NativeModules bridge
+const AppBlockerModule: AppBlockerModuleSpec | null =
+  TurboModuleRegistry.get<AppBlockerModuleSpec>('AppBlockerModule') ??
+  NativeModules.AppBlockerModule ??
+  null;
 
 export interface InstalledApp {
   packageName: string;
@@ -14,7 +43,7 @@ const isModuleAvailable = Platform.OS === 'android' && AppBlockerModule != null;
 
 // Event emitter for native events
 const eventEmitter = isModuleAvailable
-  ? new NativeEventEmitter(AppBlockerModule)
+  ? new NativeEventEmitter(AppBlockerModule!)
   : null;
 
 export const AppBlocker = {
@@ -27,7 +56,7 @@ export const AppBlocker = {
   async hasUsageStatsPermission(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.hasUsageStatsPermission();
+      return await AppBlockerModule!.hasUsageStatsPermission();
     } catch (error) {
       console.error('Error checking usage stats permission:', error);
       return false;
@@ -37,7 +66,7 @@ export const AppBlocker = {
   async openUsageStatsSettings(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.openUsageStatsSettings();
+      return await AppBlockerModule!.openUsageStatsSettings();
     } catch (error) {
       console.error('Error opening usage stats settings:', error);
       return false;
@@ -47,7 +76,7 @@ export const AppBlocker = {
   async hasOverlayPermission(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.hasOverlayPermission();
+      return await AppBlockerModule!.hasOverlayPermission();
     } catch (error) {
       console.error('Error checking overlay permission:', error);
       return false;
@@ -57,7 +86,7 @@ export const AppBlocker = {
   async openOverlaySettings(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.openOverlaySettings();
+      return await AppBlockerModule!.openOverlaySettings();
     } catch (error) {
       console.error('Error opening overlay settings:', error);
       return false;
@@ -67,7 +96,7 @@ export const AppBlocker = {
   async isAccessibilityServiceEnabled(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.isAccessibilityServiceEnabled();
+      return await AppBlockerModule!.isAccessibilityServiceEnabled();
     } catch (error) {
       console.error('Error checking accessibility service:', error);
       return false;
@@ -77,7 +106,7 @@ export const AppBlocker = {
   async openAccessibilitySettings(): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.openAccessibilitySettings();
+      return await AppBlockerModule!.openAccessibilitySettings();
     } catch (error) {
       console.error('Error opening accessibility settings:', error);
       return false;
@@ -88,7 +117,7 @@ export const AppBlocker = {
   async setBlockedApps(packageNames: string[]): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.setBlockedApps(packageNames);
+      return await AppBlockerModule!.setBlockedApps(packageNames);
     } catch (error) {
       console.error('Error setting blocked apps:', error);
       return false;
@@ -98,7 +127,7 @@ export const AppBlocker = {
   async getBlockedApps(): Promise<string[]> {
     if (!isModuleAvailable) return [];
     try {
-      return await AppBlockerModule.getBlockedApps();
+      return await AppBlockerModule!.getBlockedApps();
     } catch (error) {
       console.error('Error getting blocked apps:', error);
       return [];
@@ -108,7 +137,7 @@ export const AppBlocker = {
   async blockApp(packageName: string): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.blockApp(packageName);
+      return await AppBlockerModule!.blockApp(packageName);
     } catch (error) {
       console.error('Error blocking app:', error);
       return false;
@@ -118,7 +147,7 @@ export const AppBlocker = {
   async unblockApp(packageName: string): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.unblockApp(packageName);
+      return await AppBlockerModule!.unblockApp(packageName);
     } catch (error) {
       console.error('Error unblocking app:', error);
       return false;
@@ -128,7 +157,7 @@ export const AppBlocker = {
   async isAppBlocked(packageName: string): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule.isAppBlocked(packageName);
+      return await AppBlockerModule!.isAppBlocked(packageName);
     } catch (error) {
       console.error('Error checking if app is blocked:', error);
       return false;
@@ -138,10 +167,100 @@ export const AppBlocker = {
   async getInstalledApps(): Promise<InstalledApp[]> {
     if (!isModuleAvailable) return [];
     try {
-      return await AppBlockerModule.getInstalledApps();
+      return await AppBlockerModule!.getInstalledApps();
     } catch (error) {
       console.error('Error getting installed apps:', error);
       return [];
+    }
+  },
+
+  // --- Blocked Keywords ---
+
+  async setBlockedKeywords(keywords: string[]): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setBlockedKeywords(keywords);
+    } catch (error) {
+      console.error('Error setting blocked keywords:', error);
+      return false;
+    }
+  },
+
+  async getBlockedKeywords(): Promise<string[]> {
+    if (!isModuleAvailable) return [];
+    try {
+      return await AppBlockerModule!.getBlockedKeywords();
+    } catch (error) {
+      console.error('Error getting blocked keywords:', error);
+      return [];
+    }
+  },
+
+  // --- Blocked Domains ---
+
+  async setBlockedDomains(domains: string[]): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setBlockedDomains(domains);
+    } catch (error) {
+      console.error('Error setting blocked domains:', error);
+      return false;
+    }
+  },
+
+  async getBlockedDomains(): Promise<string[]> {
+    if (!isModuleAvailable) return [];
+    try {
+      return await AppBlockerModule!.getBlockedDomains();
+    } catch (error) {
+      console.error('Error getting blocked domains:', error);
+      return [];
+    }
+  },
+
+  // --- Partner Config ---
+
+  async setPartnerConfig(type: string, email: string | null, timeDelay: number): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setPartnerConfig(type, email, timeDelay);
+    } catch (error) {
+      console.error('Error setting partner config:', error);
+      return false;
+    }
+  },
+
+  async getPartnerConfig(): Promise<{ type: string | null; email: string | null; timeDelay: number }> {
+    if (!isModuleAvailable) return { type: null, email: null, timeDelay: 0 };
+    try {
+      return await AppBlockerModule!.getPartnerConfig();
+    } catch (error) {
+      console.error('Error getting partner config:', error);
+      return { type: null, email: null, timeDelay: 0 };
+    }
+  },
+
+  // --- Uninstall Protection ---
+
+  async setUninstallProtectionEnd(endDateMs: number): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setUninstallProtectionEnd(endDateMs);
+    } catch (error) {
+      console.error('Error setting uninstall protection end:', error);
+      return false;
+    }
+  },
+
+  // --- Battery Optimization ---
+
+  async requestIgnoreBatteryOptimization(): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.requestIgnoreBatteryOptimization();
+    } catch (error) {
+      console.error('Error requesting battery optimization:', error);
+      return false;
     }
   },
 

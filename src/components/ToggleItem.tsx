@@ -28,7 +28,12 @@ export default function ToggleItem({
         <View style={styles.textContainer}>
           <Text style={[styles.title, disabled && styles.titleDisabled]}>{title}</Text>
           {subtitle && (
-            <Text style={[styles.subtitle, disabled && styles.subtitleDisabled]}>{subtitle}</Text>
+            <Text
+              selectable
+              style={[styles.subtitle, disabled && styles.subtitleDisabled]}
+            >
+              {subtitle}
+            </Text>
           )}
         </View>
         {showInfo && (
@@ -41,8 +46,8 @@ export default function ToggleItem({
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: colors.border, true: colors.primaryLight }}
-        thumbColor={value ? colors.primary : colors.textMuted}
+        trackColor={{ false: colors.borderLight, true: colors.primaryLight + '80' }}
+        thumbColor={value ? colors.primary : colors.border}
       />
     </View>
   );
@@ -53,12 +58,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    paddingVertical: 14,
+    gap: 12,
   },
   containerDisabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   labelContainer: {
     flexDirection: 'row',
@@ -68,6 +72,7 @@ const styles = StyleSheet.create({
   },
   textContainer: {
     flex: 1,
+    gap: 2,
   },
   title: {
     fontFamily: fonts.medium,
@@ -79,9 +84,9 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: fontSizes.sm,
-    color: colors.textMuted,
-    marginTop: 2,
+    fontSize: fontSizes.xs,
+    color: colors.protected,
+    lineHeight: fontSizes.xs * 1.4,
   },
   subtitleDisabled: {
     color: colors.border,

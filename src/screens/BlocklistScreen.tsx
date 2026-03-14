@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   FlatList,
 } from 'react-native';
@@ -48,6 +47,34 @@ export default function BlocklistScreen() {
   const getKeywordsCount = () => {
     return mainTab === 'blocklist' ? blockedKeywords.length : whitelistedKeywords.length;
   };
+
+  const getCurrentItems = (): string[] => {
+    if (mainTab === 'blocklist') {
+      return subTab === 'apps' ? blockedApps : blockedKeywords;
+    }
+    return subTab === 'apps' ? whitelistedApps : whitelistedKeywords;
+  };
+
+  const keyExtractor = useCallback((item: string, index: number) => `${item}-${index}`, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: string }) => (
+      <View style={styles.listItem}>
+        <View style={styles.listItemInfo}>
+          {subTab === 'apps' ? (
+            <Smartphone size={20} color={colors.primary} strokeWidth={2} />
+          ) : (
+            <Globe size={20} color={colors.primary} strokeWidth={2} />
+          )}
+          <Text style={styles.listItemText}>{item}</Text>
+        </View>
+        <TouchableOpacity style={styles.deleteButton}>
+          <Trash2 size={18} color={colors.blocked} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+    ),
+    [subTab],
+  );
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
@@ -164,13 +191,16 @@ export default function BlocklistScreen() {
 
         {/* Content */}
         <View style={styles.content}>
-          {getCurrentCount() === 0 ? (
-            renderEmptyState()
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* List items would go here when data is available */}
-            </ScrollView>
-          )}
+          <FlatList
+            data={getCurrentItems()}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            ListEmptyComponent={renderEmptyState}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={
+              getCurrentItems().length === 0 ? styles.emptyListContainer : undefined
+            }
+          />
         </View>
 
         {/* FAB Button */}
@@ -285,6 +315,39 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.md,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  emptyListContainer: {
+    flex: 1,
+  },
+  listItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  listItemInfo: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  listItemText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes.md,
+    color: colors.textPrimary,
+    flex: 1,
+    textAlign: 'right',
+  },
+  deleteButton: {
+    padding: 8,
   },
   fab: {
     position: 'absolute',

@@ -15,7 +15,7 @@ export default function SectionCard({ icon: Icon, title, children }: SectionCard
       {/* Ribbon/Banner Header */}
       <View style={styles.ribbon}>
         <View style={styles.ribbonContent}>
-          <Icon size={18} color={colors.white} strokeWidth={2} />
+          <Icon size={16} color={colors.primary} strokeWidth={2.5} />
           <Text style={styles.ribbonText}>{title}</Text>
         </View>
       </View>
@@ -32,18 +32,19 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: 16,
+    borderCurve: 'continuous',
     marginBottom: 16,
     overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
   },
   ribbon: {
-    backgroundColor: colors.textSecondary,
+    backgroundColor: colors.surfaceVariant,
     paddingVertical: 10,
     paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
   ribbonContent: {
     flexDirection: 'row',
@@ -52,10 +53,13 @@ const styles = StyleSheet.create({
   },
   ribbonText: {
     fontFamily: fonts.bold,
-    fontSize: fontSizes.md,
-    color: colors.white,
+    fontSize: fontSizes.sm,
+    color: colors.primaryDark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   content: {
-    padding: 16,
+    padding: 4,
+    paddingHorizontal: 16,
   },
 });

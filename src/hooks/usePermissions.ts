@@ -14,7 +14,6 @@ const defaultPermissions: Record<PermissionType, PermissionStatus> = {
   usageStats: { granted: false, canAskAgain: true },
   overlay: { granted: false, canAskAgain: true },
   accessibility: { granted: false, canAskAgain: true },
-  vpn: { granted: false, canAskAgain: true },
   deviceAdmin: { granted: false, canAskAgain: true },
 };
 

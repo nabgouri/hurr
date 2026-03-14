@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, View, Text, I18nManager } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +16,14 @@ import { colors, fonts, fontSizes } from './src/theme';
 
 // Import navigation
 import { RootNavigator } from './src/navigation';
+
+// Import centralized AppState provider
+import { AppStateProvider } from './src/contexts/AppStateContext';
+
+// Import blocker modules and data
+import { AppBlocker } from './src/modules';
+import { allAdultKeywords, adultDomains } from './src/data/adultBlocklist';
+import { StorageService } from './src/services';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -38,7 +46,21 @@ export default function App() {
           setIsFirstLaunch(true);
           await AsyncStorage.setItem(FIRST_LAUNCH_KEY, 'true');
         } else {
-          setIsFirstLaunch(false);
+          setIsFirstLaunch(true); // TODO: revert to false after testing
+        }
+
+        // Sync blocklists to native accessibility service
+        if (AppBlocker.isAvailable()) {
+          const [, , blockedApps] = await Promise.all([
+            AppBlocker.setBlockedKeywords(allAdultKeywords),
+            AppBlocker.setBlockedDomains(adultDomains),
+            StorageService.getBlockedApps(),
+          ]);
+
+          if (blockedApps.length > 0) {
+            const packageNames = blockedApps.map(app => app.packageName);
+            await AppBlocker.setBlockedApps(packageNames);
+          }
         }
       } catch (e) {
         console.warn('Error in app preparation:', e);
@@ -56,11 +78,6 @@ export default function App() {
     }
   }, [appIsReady, fontsLoaded]);
 
-  // Log RTL status for debugging
-  useEffect(() => {
-    console.log('RTL Status:', I18nManager.isRTL);
-  }, []);
-
   if (!appIsReady || !fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
@@ -71,12 +88,14 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider onLayout={onLayoutRootView}>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <RootNavigator isFirstLaunch={isFirstLaunch} />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <AppStateProvider>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <RootNavigator isFirstLaunch={isFirstLaunch} />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </AppStateProvider>
   );
 }
 

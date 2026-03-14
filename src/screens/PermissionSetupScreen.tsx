@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,141 +9,106 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Accessibility, Square, CheckSquare } from 'lucide-react-native';
 import { colors, fonts, fontSizes } from '../theme';
+import { RootStackParamList } from '../navigation/types';
+import { AppBlocker } from '../modules';
+import { useOnAppActive } from '../contexts/AppStateContext';
 
-interface Permission {
-  id: string;
-  emoji: string;
-  titleKey: string;
-  descriptionKey: string;
-  granted: boolean;
-}
-
-const initialPermissions: Permission[] = [
-  {
-    id: 'usage',
-    emoji: '📊',
-    titleKey: 'onboarding.usageAccess',
-    descriptionKey: 'onboarding.usageAccessDescription',
-    granted: false,
-  },
-  {
-    id: 'overlay',
-    emoji: '🖼️',
-    titleKey: 'onboarding.overlayPermission',
-    descriptionKey: 'onboarding.overlayPermissionDescription',
-    granted: false,
-  },
-  {
-    id: 'accessibility',
-    emoji: '♿',
-    titleKey: 'onboarding.accessibilityService',
-    descriptionKey: 'onboarding.accessibilityServiceDescription',
-    granted: false,
-  },
-  {
-    id: 'vpn',
-    emoji: '🔒',
-    titleKey: 'onboarding.vpnPermission',
-    descriptionKey: 'onboarding.vpnPermissionDescription',
-    granted: false,
-  },
-];
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function PermissionSetupScreen() {
   const { t } = useTranslation();
-  const navigation = useNavigation();
-  const [permissions, setPermissions] = useState<Permission[]>(initialPermissions);
+  const navigation = useNavigation<NavigationProp>();
+  const [agreed, setAgreed] = useState(false);
+  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState(false);
 
-  const handleGrantPermission = (permissionId: string) => {
-    // In real app, this would open the appropriate settings
-    // For now, just simulate granting
-    setPermissions((prev) =>
-      prev.map((p) =>
-        p.id === permissionId ? { ...p, granted: true } : p
-      )
-    );
+  const checkAccessibility = useCallback(async () => {
+    const enabled = await AppBlocker.isAccessibilityServiceEnabled();
+    setIsAccessibilityEnabled(enabled);
+    if (enabled) {
+      navigation.replace('MainTabs');
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    checkAccessibility();
+  }, [checkAccessibility]);
+
+  useOnAppActive(checkAccessibility);
+
+  const handleTurnOn = async () => {
+    await AppBlocker.openAccessibilitySettings();
   };
 
-  const allGranted = permissions.every((p) => p.granted);
-
-  const handleFinish = () => {
-    navigation.goBack();
+  const handleSkip = () => {
+    navigation.replace('MainTabs');
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header icon */}
         <View style={styles.header}>
-          <Text style={styles.emoji}>🔐</Text>
-          <Text style={styles.title}>{t('onboarding.permissions')}</Text>
-          <Text style={styles.subtitle}>{t('onboarding.permissionsDescription')}</Text>
+          <Accessibility size={56} color={colors.primary} strokeWidth={1.5} />
+          <Text style={styles.title}>{t('onboarding.accessibilityTitle')}</Text>
         </View>
 
-        {/* Permissions List */}
-        <View style={styles.permissionsList}>
-          {permissions.map((permission) => (
-            <View
-              key={permission.id}
-              style={[
-                styles.permissionCard,
-                permission.granted && styles.permissionCardGranted,
-              ]}
-            >
-              <View style={styles.permissionContent}>
-                <Text style={styles.permissionEmoji}>{permission.emoji}</Text>
-                <View style={styles.permissionTextContainer}>
-                  <Text style={styles.permissionTitle}>
-                    {t(permission.titleKey)}
-                  </Text>
-                  <Text style={styles.permissionDescription}>
-                    {t(permission.descriptionKey)}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.grantButton,
-                  permission.granted && styles.grantButtonGranted,
-                ]}
-                onPress={() => handleGrantPermission(permission.id)}
-                disabled={permission.granted}
-              >
-                <Text
-                  style={[
-                    styles.grantButtonText,
-                    permission.granted && styles.grantButtonTextGranted,
-                  ]}
-                >
-                  {permission.granted ? '✓' : t('onboarding.grantPermission')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ))}
+        {/* Usage section */}
+        <Text style={styles.sectionTitle}>{t('onboarding.accessibilityUsage')}</Text>
+
+        {/* Point 1 */}
+        <View style={styles.point}>
+          <View style={styles.bullet} />
+          <Text style={styles.pointText}>{t('onboarding.accessibilityPoint1')}</Text>
+        </View>
+
+        {/* Point 2 */}
+        <View style={styles.point}>
+          <View style={styles.bullet} />
+          <Text style={styles.pointText}>{t('onboarding.accessibilityPoint2')}</Text>
         </View>
       </ScrollView>
 
       {/* Footer */}
       <View style={styles.footer}>
+        {/* Checkbox agreement */}
         <TouchableOpacity
-          style={[styles.finishButton, !allGranted && styles.finishButtonDisabled]}
-          onPress={handleFinish}
+          style={styles.checkboxRow}
+          onPress={() => setAgreed(!agreed)}
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.finishButtonText,
-              !allGranted && styles.finishButtonTextDisabled,
-            ]}
-          >
-            {t('onboarding.finish')}
-          </Text>
+          {agreed ? (
+            <CheckSquare size={24} color={colors.primary} strokeWidth={2} />
+          ) : (
+            <Square size={24} color={colors.textMuted} strokeWidth={2} />
+          )}
+          <Text style={styles.checkboxText}>{t('onboarding.accessibilityCheckbox')}</Text>
         </TouchableOpacity>
-        {!allGranted && (
-          <TouchableOpacity onPress={handleFinish}>
-            <Text style={styles.skipText}>{t('onboarding.skip')}</Text>
+
+        {/* Buttons */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+            <Text style={styles.skipButtonText}>{t('onboarding.skip')}</Text>
           </TouchableOpacity>
-        )}
+
+          <TouchableOpacity
+            style={[styles.turnOnButton, !agreed && styles.turnOnButtonDisabled]}
+            onPress={handleTurnOn}
+            disabled={!agreed}
+          >
+            <Text
+              style={[styles.turnOnButtonText, !agreed && styles.turnOnButtonTextDisabled]}
+            >
+              {t('onboarding.turnOn')}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -154,116 +119,101 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
+  scrollView: {
     flex: 1,
-    padding: 16,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 16,
   },
   header: {
     alignItems: 'center',
+    marginTop: 24,
     marginBottom: 32,
-    marginTop: 20,
-  },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
   },
   title: {
     fontFamily: fonts.bold,
-    fontSize: fontSizes.xxl,
+    fontSize: 24,
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: 8,
+    marginTop: 12,
   },
-  subtitle: {
-    fontFamily: fonts.regular,
-    fontSize: fontSizes.md,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  permissionsList: {
-    gap: 12,
-  },
-  permissionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: colors.border,
-    marginBottom: 12,
-  },
-  permissionCardGranted: {
-    borderColor: colors.protected,
-    backgroundColor: colors.protectedBackground,
-  },
-  permissionContent: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  permissionEmoji: {
-    fontSize: 32,
-    marginLeft: 12,
-  },
-  permissionTextContainer: {
-    flex: 1,
-  },
-  permissionTitle: {
-    fontFamily: fonts.bold,
-    fontSize: fontSizes.md,
-    color: colors.textPrimary,
-    textAlign: 'right',
-    marginBottom: 4,
-  },
-  permissionDescription: {
-    fontFamily: fonts.regular,
-    fontSize: fontSizes.sm,
-    color: colors.textMuted,
-    textAlign: 'right',
-    lineHeight: fontSizes.sm * 1.5,
-  },
-  grantButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  grantButtonGranted: {
-    backgroundColor: colors.protected,
-  },
-  grantButtonText: {
-    fontFamily: fonts.bold,
-    fontSize: fontSizes.md,
-    color: colors.textOnPrimary,
-  },
-  grantButtonTextGranted: {
-    color: colors.white,
-  },
-  footer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  finishButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  finishButtonDisabled: {
-    backgroundColor: colors.border,
-  },
-  finishButtonText: {
+  sectionTitle: {
     fontFamily: fonts.bold,
     fontSize: fontSizes.lg,
-    color: colors.textOnPrimary,
+    color: colors.textPrimary,
+    marginBottom: 16,
   },
-  finishButtonTextDisabled: {
-    color: colors.textMuted,
+  point: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    gap: 10,
   },
-  skipText: {
-    fontFamily: fonts.medium,
+  bullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.textPrimary,
+    marginTop: 8,
+  },
+  pointText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.md,
+    color: colors.textPrimary,
+    lineHeight: fontSizes.md * 1.6,
+  },
+  footer: {
+    padding: 24,
+    paddingTop: 16,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 20,
+  },
+  checkboxText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    lineHeight: fontSizes.sm * 1.5,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  skipButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
+  },
+  skipButtonText: {
+    fontFamily: fonts.bold,
     fontSize: fontSizes.md,
     color: colors.textMuted,
-    textAlign: 'center',
+  },
+  turnOnButton: {
+    flex: 2,
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  turnOnButtonDisabled: {
+    backgroundColor: colors.border,
+  },
+  turnOnButtonText: {
+    fontFamily: fonts.bold,
+    fontSize: fontSizes.md,
+    color: colors.textOnPrimary,
+  },
+  turnOnButtonTextDisabled: {
+    color: colors.textMuted,
   },
 });

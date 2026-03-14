@@ -49,13 +49,10 @@ export const globalStyles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
+    borderCurve: 'continuous',
     padding: 16,
     marginBottom: 12,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
   },
   cardHeader: {
     flexDirection: 'row-reverse', // RTL default
@@ -63,24 +60,27 @@ export const globalStyles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Typography
+  // Typography — writingDirection must be on Text components (not inherited from Views)
   textTitle: {
     fontFamily: fonts.bold,
     fontSize: fontSizes.xxl,
     color: colors.textPrimary,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   textSubtitle: {
     fontFamily: fonts.medium,
     fontSize: fontSizes.lg,
     color: colors.textPrimary,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   textBody: {
     fontFamily: fonts.regular,
     fontSize: fontSizes.md,
     color: colors.textSecondary,
     textAlign: 'right',
+    writingDirection: 'rtl',
     lineHeight: fontSizes.md * 1.5,
   },
   textCaption: {
@@ -88,12 +88,14 @@ export const globalStyles = StyleSheet.create({
     fontSize: fontSizes.sm,
     color: colors.textMuted,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   textLabel: {
     fontFamily: fonts.medium,
     fontSize: fontSizes.sm,
     color: colors.textSecondary,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
 
   // Buttons
