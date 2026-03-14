@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Base: deep dark indigo -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:startColor="#080A18"
+                android:centerColor="#10152E"
+                android:endColor="#0B0E22"
+                android:angle="270" />
+        </shape>
+    </item>
+    <!-- Radial glow: subtle cool spotlight -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:startColor="#1A253580"
+                android:endColor="#00000000"
+                android:gradientRadius="480dp"
+                android:centerX="0.5"
+                android:centerY="0.35" />
+        </shape>
+    </item>
+    <!-- Accent glow: subtle purple haze -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:startColor="#0D8B5CF6"
+                android:endColor="#00000000"
+                android:gradientRadius="320dp"
+                android:centerX="0.5"
+                android:centerY="0.38" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_uninstall_blocker_gradient"
+    android:layoutDirection="rtl">
+
+    <!-- Scrollable main content -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/contentContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="32dp"
+            android:paddingTop="80dp"
+            android:paddingBottom="100dp"
+            android:alpha="0">
+
+            <!-- Icon ring with shield-lock -->
+            <FrameLayout
+                android:layout_width="140dp"
+                android:layout_height="140dp"
+                android:layout_marginBottom="32dp">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/shape_blocker_icon_ring" />
+
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_shield_lock"
+                    android:contentDescription="@null" />
+            </FrameLayout>
+
+            <!-- Title -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/uninstall_blocked_title"
+                android:textColor="#F0F0F0"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:letterSpacing="0.01"
+                android:lineSpacingMultiplier="1.2"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Accent divider -->
+            <View
+                android:layout_width="80dp"
+                android:layout_height="1.5dp"
+                android:background="@drawable/shape_accent_divider_amber"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Message -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/uninstall_blocked_message"
+                android:textColor="#B0BEC5"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.4"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Days remaining -->
+            <TextView
+                android:id="@+id/tvDaysRemaining"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F59E0B"
+                android:textSize="15sp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:letterSpacing="0.02"
+                android:layout_marginBottom="48dp" />
+
+            <!-- Close button -->
+            <Button
+                android:id="@+id/btnUninstallClose"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="@string/blocker_close"
+                android:textColor="#E8E8E8"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.04"
+                android:background="@drawable/btn_blocker_close"
+                android:stateListAnimator="@null"
+                android:elevation="0dp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- App name watermark at bottom -->
+    <LinearLayout
+        android:id="@+id/bottomBranding"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingBottom="36dp"
+        android:alpha="0">
+
+        <View
+            android:layout_width="24dp"
+            android:layout_height="0.5dp"
+            android:background="#1AFFFFFF"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.08"
+            android:alpha="0.25" />
+    </LinearLayout>
+
+</FrameLayout>

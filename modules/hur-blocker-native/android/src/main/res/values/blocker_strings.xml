@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">تطبيق حُر يستخدم هذه الخدمة لمراقبة التطبيقات المفتوحة وحظر التطبيقات المحددة لمساعدتك على التركيز والتحرر من الإدمان الرقمي.</string>
+    <string name="blocker_title">هذا التطبيق محظور</string>
+    <string name="blocker_message">ارجع إلى ما هو مفيد</string>
+    <string name="stay_strong">كن قوياً</string>
+
+    <!-- Content Blocker Overlay Strings -->
+    <string name="content_blocker_title">تم حظر محتوى غير مناسب</string>
+    <string name="content_blocker_message">هذا المحتوى محظور لحمايتك</string>
+    <string name="content_blocker_reason">السبب: %s</string>
+    <string name="content_blocker_stay_strong">أنت أقوى من هذا</string>
+
+    <!-- Uninstall Protection Overlay -->
+    <string name="uninstall_blocked_title">لا يمكن إزالة التطبيق</string>
+    <string name="uninstall_blocked_message">حماية إزالة التطبيق مفعّلة. لا يمكن إزالة التثبيت حالياً.</string>
+    <string name="uninstall_days_remaining">متبقي %d يوم</string>
+
+    <!-- Why Blocked dropdown -->
+    <string name="why_blocked">لماذا تم الحظر؟</string>
+    <string name="explicit_keyword_detected">تم اكتشاف كلمة محظورة</string>
+    <string name="blocked_keyword">الكلمة: %s</string>
+    <string name="blocked_via_browser">عبر: %s</string>
+    <string name="app_blocked_detected">هذا التطبيق في قائمة الحظر</string>
+    <string name="blocked_app_name">التطبيق: %s</string>
+
+    <!-- Shared Strings -->
+    <string name="blocker_close">إغلاق</string>
+    <string name="web_blocker_go_home">العودة للرئيسية</string>
+</resources>

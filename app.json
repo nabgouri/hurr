@@ -36,7 +36,8 @@
     },
     "plugins": [
       "expo-font",
-      "expo-localization"
+      "expo-localization",
+      "./modules/hur-blocker-native/app.plugin.js"
     ],
     "extra": {
       "supportsRTL": true
