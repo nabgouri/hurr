@@ -10,10 +10,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
-import com.facebook.react.bridge.*
-import com.facebook.react.modules.core.DeviceEventManagerModule
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
 
-class AppBlockerModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class AppBlockerModule : Module() {
 
     companion object {
         const val NAME = "AppBlockerModule"
@@ -35,27 +35,17 @@ class AppBlockerModule(reactContext: ReactApplicationContext) : ReactContextBase
 
         fun isPackageBlocked(packageName: String): Boolean = blockedPackages.contains(packageName)
 
-        /**
-         * Check if a URL or text content should be blocked.
-         * Returns the matched keyword/domain or null if not blocked.
-         */
         fun checkContentBlocked(text: String): String? {
             val lower = text.lowercase()
-            // Check domains
             for (domain in blockedDomains) {
                 if (lower.contains(domain)) return domain
             }
-            // Check keywords
             for (keyword in blockedKeywords) {
                 if (lower.contains(keyword)) return keyword
             }
             return null
         }
 
-        /**
-         * Restore all blocklists from SharedPreferences.
-         * Called by BootReceiver and AppBlockerService on startup.
-         */
         fun restoreFromPrefs(context: Context) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             blockedPackages = prefs.getStringSet(KEY_BLOCKED_PACKAGES, emptySet())?.toMutableSet() ?: mutableSetOf()
@@ -63,9 +53,6 @@ class AppBlockerModule(reactContext: ReactApplicationContext) : ReactContextBase
             blockedDomains = prefs.getStringSet(KEY_BLOCKED_DOMAINS, emptySet())?.toMutableSet() ?: mutableSetOf()
         }
 
-        /**
-         * Persist all blocklists to SharedPreferences.
-         */
         private fun persistToPrefs(context: Context) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit()
@@ -76,322 +63,179 @@ class AppBlockerModule(reactContext: ReactApplicationContext) : ReactContextBase
         }
     }
 
-    override fun getName(): String = NAME
+    private val context
+        get() = requireNotNull(appContext.reactContext)
 
     private fun getPrefs(): SharedPreferences =
-        reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    // Check if Usage Stats permission is granted
-    @ReactMethod
-    fun hasUsageStatsPermission(promise: Promise) {
-        try {
-            val appOps = reactApplicationContext.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+    override fun definition() = ModuleDefinition {
+        Name(NAME)
+
+        // --- Permission Checks ---
+
+        AsyncFunction("hasUsageStatsPermission") {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
             val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 appOps.unsafeCheckOpNoThrow(
                     AppOpsManager.OPSTR_GET_USAGE_STATS,
                     Process.myUid(),
-                    reactApplicationContext.packageName
+                    context.packageName
                 )
             } else {
                 @Suppress("DEPRECATION")
                 appOps.checkOpNoThrow(
                     AppOpsManager.OPSTR_GET_USAGE_STATS,
                     Process.myUid(),
-                    reactApplicationContext.packageName
+                    context.packageName
                 )
             }
-            promise.resolve(mode == AppOpsManager.MODE_ALLOWED)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction mode == AppOpsManager.MODE_ALLOWED
         }
-    }
 
-    // Open Usage Stats settings
-    @ReactMethod
-    fun openUsageStatsSettings(promise: Promise) {
-        try {
+        AsyncFunction("openUsageStatsSettings") {
             val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            reactApplicationContext.startActivity(intent)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            context.startActivity(intent)
+            return@AsyncFunction true
         }
-    }
 
-    // Check if overlay permission is granted
-    @ReactMethod
-    fun hasOverlayPermission(promise: Promise) {
-        try {
-            val hasPermission = Settings.canDrawOverlays(reactApplicationContext)
-            promise.resolve(hasPermission)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+        AsyncFunction("hasOverlayPermission") {
+            return@AsyncFunction Settings.canDrawOverlays(context)
         }
-    }
 
-    // Open overlay permission settings
-    @ReactMethod
-    fun openOverlaySettings(promise: Promise) {
-        try {
+        AsyncFunction("openOverlaySettings") {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${reactApplicationContext.packageName}")
+                Uri.parse("package:${context.packageName}")
             )
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            reactApplicationContext.startActivity(intent)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            context.startActivity(intent)
+            return@AsyncFunction true
         }
-    }
 
-    // Check if accessibility service is enabled
-    @ReactMethod
-    fun isAccessibilityServiceEnabled(promise: Promise) {
-        try {
-            val serviceName = "${reactApplicationContext.packageName}/${AppBlockerService::class.java.canonicalName}"
+        AsyncFunction("isAccessibilityServiceEnabled") {
+            val serviceName = "${context.packageName}/${AppBlockerService::class.java.canonicalName}"
             val enabledServices = Settings.Secure.getString(
-                reactApplicationContext.contentResolver,
+                context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ) ?: ""
-
-            val isEnabled = enabledServices.contains(serviceName)
-            promise.resolve(isEnabled)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction enabledServices.contains(serviceName)
         }
-    }
 
-    // Open accessibility settings
-    @ReactMethod
-    fun openAccessibilitySettings(promise: Promise) {
-        try {
+        AsyncFunction("openAccessibilitySettings") {
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            reactApplicationContext.startActivity(intent)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            context.startActivity(intent)
+            return@AsyncFunction true
         }
-    }
 
-    // Set uninstall protection end date (syncs to SharedPreferences for native access)
-    @ReactMethod
-    fun setUninstallProtectionEnd(endDateMs: Double, promise: Promise) {
-        try {
-            val prefs = reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        // --- Uninstall Protection ---
+
+        AsyncFunction("setUninstallProtectionEnd") { endDateMs: Double ->
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putLong("uninstall_protection_end", endDateMs.toLong()).apply()
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction true
         }
-    }
 
-    // Set blocked apps list
-    @ReactMethod
-    fun setBlockedApps(packageNames: ReadableArray, promise: Promise) {
-        try {
+        // --- App Blocking ---
+
+        AsyncFunction("setBlockedApps") { packageNames: List<String> ->
             blockedPackages.clear()
-            for (i in 0 until packageNames.size()) {
-                packageNames.getString(i)?.let { blockedPackages.add(it) }
-            }
-            persistToPrefs(reactApplicationContext)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            blockedPackages.addAll(packageNames)
+            persistToPrefs(context)
+            return@AsyncFunction true
         }
-    }
 
-    // Get blocked apps list
-    @ReactMethod
-    fun getBlockedApps(promise: Promise) {
-        try {
-            val array = Arguments.createArray()
-            blockedPackages.forEach { array.pushString(it) }
-            promise.resolve(array)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+        AsyncFunction("getBlockedApps") {
+            return@AsyncFunction blockedPackages.toList()
         }
-    }
 
-    // Add app to blocked list
-    @ReactMethod
-    fun blockApp(packageName: String, promise: Promise) {
-        try {
+        AsyncFunction("blockApp") { packageName: String ->
             blockedPackages.add(packageName)
-            persistToPrefs(reactApplicationContext)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            persistToPrefs(context)
+            return@AsyncFunction true
         }
-    }
 
-    // Remove app from blocked list
-    @ReactMethod
-    fun unblockApp(packageName: String, promise: Promise) {
-        try {
+        AsyncFunction("unblockApp") { packageName: String ->
             blockedPackages.remove(packageName)
-            persistToPrefs(reactApplicationContext)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            persistToPrefs(context)
+            return@AsyncFunction true
         }
-    }
 
-    // Check if app is blocked
-    @ReactMethod
-    fun isAppBlocked(packageName: String, promise: Promise) {
-        try {
-            promise.resolve(blockedPackages.contains(packageName))
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+        AsyncFunction("isAppBlocked") { packageName: String ->
+            return@AsyncFunction blockedPackages.contains(packageName)
         }
-    }
 
-    // Get list of installed apps
-    @ReactMethod
-    fun getInstalledApps(promise: Promise) {
-        try {
-            val pm = reactApplicationContext.packageManager
+        AsyncFunction("getInstalledApps") {
+            val pm = context.packageManager
             val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-
-            val result = Arguments.createArray()
-
-            for (appInfo in packages) {
-                // Filter out system apps that can't be launched
-                val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
-                if (launchIntent != null) {
-                    val appMap = Arguments.createMap()
-                    appMap.putString("packageName", appInfo.packageName)
-                    appMap.putString("name", pm.getApplicationLabel(appInfo).toString())
-                    appMap.putBoolean("isSystem", (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
-                    appMap.putBoolean("isBlocked", blockedPackages.contains(appInfo.packageName))
-                    result.pushMap(appMap)
+            return@AsyncFunction packages
+                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+                .map { appInfo ->
+                    mapOf(
+                        "packageName" to appInfo.packageName,
+                        "name" to pm.getApplicationLabel(appInfo).toString(),
+                        "isSystem" to ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
+                        "isBlocked" to blockedPackages.contains(appInfo.packageName)
+                    )
                 }
-            }
-
-            promise.resolve(result)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
         }
-    }
 
-    // --- Blocked Keywords ---
+        // --- Blocked Keywords ---
 
-    @ReactMethod
-    fun setBlockedKeywords(keywords: ReadableArray, promise: Promise) {
-        try {
+        AsyncFunction("setBlockedKeywords") { keywords: List<String> ->
             blockedKeywords.clear()
-            for (i in 0 until keywords.size()) {
-                keywords.getString(i)?.let { blockedKeywords.add(it.lowercase()) }
-            }
-            persistToPrefs(reactApplicationContext)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            blockedKeywords.addAll(keywords.map { it.lowercase() })
+            persistToPrefs(context)
+            return@AsyncFunction true
         }
-    }
 
-    @ReactMethod
-    fun getBlockedKeywords(promise: Promise) {
-        try {
-            val array = Arguments.createArray()
-            blockedKeywords.forEach { array.pushString(it) }
-            promise.resolve(array)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+        AsyncFunction("getBlockedKeywords") {
+            return@AsyncFunction blockedKeywords.toList()
         }
-    }
 
-    // --- Blocked Domains ---
+        // --- Blocked Domains ---
 
-    @ReactMethod
-    fun setBlockedDomains(domains: ReadableArray, promise: Promise) {
-        try {
+        AsyncFunction("setBlockedDomains") { domains: List<String> ->
             blockedDomains.clear()
-            for (i in 0 until domains.size()) {
-                domains.getString(i)?.let { blockedDomains.add(it.lowercase()) }
-            }
-            persistToPrefs(reactApplicationContext)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            blockedDomains.addAll(domains.map { it.lowercase() })
+            persistToPrefs(context)
+            return@AsyncFunction true
         }
-    }
 
-    @ReactMethod
-    fun getBlockedDomains(promise: Promise) {
-        try {
-            val array = Arguments.createArray()
-            blockedDomains.forEach { array.pushString(it) }
-            promise.resolve(array)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+        AsyncFunction("getBlockedDomains") {
+            return@AsyncFunction blockedDomains.toList()
         }
-    }
 
-    // --- Partner Config ---
+        // --- Partner Config ---
 
-    @ReactMethod
-    fun setPartnerConfig(type: String, email: String?, timeDelay: Int, promise: Promise) {
-        try {
+        AsyncFunction("setPartnerConfig") { type: String, email: String, timeDelay: Int ->
             getPrefs().edit()
                 .putString(KEY_PARTNER_TYPE, type)
-                .putString(KEY_PARTNER_EMAIL, email ?: "")
+                .putString(KEY_PARTNER_EMAIL, email)
                 .putInt(KEY_PARTNER_TIME_DELAY, timeDelay)
                 .apply()
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction true
         }
-    }
 
-    @ReactMethod
-    fun getPartnerConfig(promise: Promise) {
-        try {
+        AsyncFunction("getPartnerConfig") {
             val prefs = getPrefs()
-            val map = Arguments.createMap()
-            map.putString("type", prefs.getString(KEY_PARTNER_TYPE, null))
-            map.putString("email", prefs.getString(KEY_PARTNER_EMAIL, null))
-            map.putInt("timeDelay", prefs.getInt(KEY_PARTNER_TIME_DELAY, 0))
-            promise.resolve(map)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction mapOf(
+                "type" to prefs.getString(KEY_PARTNER_TYPE, null),
+                "email" to prefs.getString(KEY_PARTNER_EMAIL, null),
+                "timeDelay" to prefs.getInt(KEY_PARTNER_TIME_DELAY, 0)
+            )
         }
-    }
 
-    // --- Battery Optimization ---
+        // --- Battery Optimization ---
 
-    @ReactMethod
-    fun requestIgnoreBatteryOptimization(promise: Promise) {
-        try {
+        AsyncFunction("requestIgnoreBatteryOptimization") {
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            intent.data = Uri.parse("package:${reactApplicationContext.packageName}")
+            intent.data = Uri.parse("package:${context.packageName}")
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            reactApplicationContext.startActivity(intent)
-            promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            context.startActivity(intent)
+            return@AsyncFunction true
         }
-    }
-
-    // Send event to JS
-    private fun sendEvent(eventName: String, params: WritableMap?) {
-        reactApplicationContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(eventName, params)
-    }
-
-    // Add listener (required for EventEmitter)
-    @ReactMethod
-    fun addListener(eventName: String) {
-        // Keep track of listeners
-    }
-
-    // Remove listener (required for EventEmitter)
-    @ReactMethod
-    fun removeListeners(count: Int) {
-        // Remove listeners
     }
 }

@@ -5,56 +5,47 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import com.facebook.react.bridge.ActivityEventListener
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
 
-class DeviceAdminModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext), ActivityEventListener {
+class DeviceAdminModule : Module() {
 
     companion object {
-        const val NAME = "DeviceAdminModule"
         private const val DEVICE_ADMIN_REQUEST_CODE = 9001
     }
 
     private var deviceAdminPromise: Promise? = null
 
-    init {
-        reactContext.addActivityEventListener(this)
-    }
+    private val context
+        get() = requireNotNull(appContext.reactContext)
 
-    override fun getName(): String = NAME
+    override fun definition() = ModuleDefinition {
+        Name("DeviceAdminModule")
 
-    /**
-     * Check if device admin is currently active.
-     */
-    @ReactMethod
-    fun isDeviceAdminActive(promise: Promise) {
-        try {
-            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE)
+        OnActivityResult { _, payload ->
+            if (payload.requestCode == DEVICE_ADMIN_REQUEST_CODE) {
+                val granted = payload.resultCode == Activity.RESULT_OK
+                deviceAdminPromise?.resolve(granted)
+                deviceAdminPromise = null
+            }
+        }
+
+        AsyncFunction("isDeviceAdminActive") {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
                 as DevicePolicyManager
-            val componentName = ComponentName(reactApplicationContext, HurDeviceAdminReceiver::class.java)
-            promise.resolve(dpm.isAdminActive(componentName))
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
-        }
-    }
-
-    /**
-     * Open the device admin activation dialog.
-     */
-    @ReactMethod
-    fun requestDeviceAdmin(promise: Promise) {
-        val activity = reactApplicationContext.currentActivity
-        if (activity == null) {
-            promise.reject("ERROR", "Activity is null")
-            return
+            val componentName = ComponentName(context, HurDeviceAdminReceiver::class.java)
+            return@AsyncFunction dpm.isAdminActive(componentName)
         }
 
-        try {
-            val componentName = ComponentName(reactApplicationContext, HurDeviceAdminReceiver::class.java)
+        AsyncFunction("requestDeviceAdmin") { promise: Promise ->
+            val activity = appContext.activityProvider?.currentActivity
+            if (activity == null) {
+                promise.reject("ERROR", "Activity is null", null)
+                return@AsyncFunction
+            }
+
+            val componentName = ComponentName(context, HurDeviceAdminReceiver::class.java)
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
                 putExtra(
@@ -66,42 +57,18 @@ class DeviceAdminModule(reactContext: ReactApplicationContext) :
 
             deviceAdminPromise = promise
             activity.startActivityForResult(intent, DEVICE_ADMIN_REQUEST_CODE)
-        } catch (e: Exception) {
-            deviceAdminPromise = null
-            promise.reject("ERROR", e.message)
         }
-    }
 
-    /**
-     * Remove device admin (disables uninstall protection).
-     */
-    @ReactMethod
-    fun removeDeviceAdmin(promise: Promise) {
-        try {
-            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE)
+        AsyncFunction("removeDeviceAdmin") {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
                 as DevicePolicyManager
-            val componentName = ComponentName(reactApplicationContext, HurDeviceAdminReceiver::class.java)
+            val componentName = ComponentName(context, HurDeviceAdminReceiver::class.java)
 
             if (dpm.isAdminActive(componentName)) {
                 dpm.removeActiveAdmin(componentName)
-                promise.resolve(true)
-            } else {
-                promise.resolve(false)
+                return@AsyncFunction true
             }
-        } catch (e: Exception) {
-            promise.reject("ERROR", e.message)
+            return@AsyncFunction false
         }
-    }
-
-    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == DEVICE_ADMIN_REQUEST_CODE) {
-            val granted = resultCode == Activity.RESULT_OK
-            deviceAdminPromise?.resolve(granted)
-            deviceAdminPromise = null
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        // Not needed
     }
 }

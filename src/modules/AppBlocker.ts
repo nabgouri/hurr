@@ -1,35 +1,8 @@
-import { NativeModules, TurboModuleRegistry, Platform, NativeEventEmitter, type TurboModule } from 'react-native';
+import { requireNativeModule, Platform } from 'expo-modules-core';
 
-interface AppBlockerModuleSpec extends TurboModule {
-  addListener(eventName: string): void;
-  removeListeners(count: number): void;
-  hasUsageStatsPermission(): Promise<boolean>;
-  openUsageStatsSettings(): Promise<boolean>;
-  hasOverlayPermission(): Promise<boolean>;
-  openOverlaySettings(): Promise<boolean>;
-  isAccessibilityServiceEnabled(): Promise<boolean>;
-  openAccessibilitySettings(): Promise<boolean>;
-  setBlockedApps(packageNames: string[]): Promise<boolean>;
-  getBlockedApps(): Promise<string[]>;
-  blockApp(packageName: string): Promise<boolean>;
-  unblockApp(packageName: string): Promise<boolean>;
-  isAppBlocked(packageName: string): Promise<boolean>;
-  getInstalledApps(): Promise<InstalledApp[]>;
-  setBlockedKeywords(keywords: string[]): Promise<boolean>;
-  getBlockedKeywords(): Promise<string[]>;
-  setBlockedDomains(domains: string[]): Promise<boolean>;
-  getBlockedDomains(): Promise<string[]>;
-  setPartnerConfig(type: string, email: string | null, timeDelay: number): Promise<boolean>;
-  getPartnerConfig(): Promise<{ type: string | null; email: string | null; timeDelay: number }>;
-  setUninstallProtectionEnd(endDateMs: number): Promise<boolean>;
-  requestIgnoreBatteryOptimization(): Promise<boolean>;
-}
-
-// TurboModuleRegistry first (lazy-loaded), fallback to legacy NativeModules bridge
-const AppBlockerModule: AppBlockerModuleSpec | null =
-  TurboModuleRegistry.get<AppBlockerModuleSpec>('AppBlockerModule') ??
-  NativeModules.AppBlockerModule ??
-  null;
+const AppBlockerModule = Platform.OS === 'android'
+  ? requireNativeModule('AppBlockerModule')
+  : null;
 
 export interface InstalledApp {
   packageName: string;
@@ -38,16 +11,9 @@ export interface InstalledApp {
   isBlocked: boolean;
 }
 
-// Check if native module is available
-const isModuleAvailable = Platform.OS === 'android' && AppBlockerModule != null;
-
-// Event emitter for native events
-const eventEmitter = isModuleAvailable
-  ? new NativeEventEmitter(AppBlockerModule!)
-  : null;
+const isModuleAvailable = AppBlockerModule != null;
 
 export const AppBlocker = {
-  // Check if the module is available
   isAvailable(): boolean {
     return isModuleAvailable;
   },
@@ -223,7 +189,7 @@ export const AppBlocker = {
   async setPartnerConfig(type: string, email: string | null, timeDelay: number): Promise<boolean> {
     if (!isModuleAvailable) return false;
     try {
-      return await AppBlockerModule!.setPartnerConfig(type, email, timeDelay);
+      return await AppBlockerModule!.setPartnerConfig(type, email ?? '', timeDelay);
     } catch (error) {
       console.error('Error setting partner config:', error);
       return false;
@@ -287,13 +253,6 @@ export const AppBlocker = {
   async hasAllRequiredPermissions(): Promise<boolean> {
     const permissions = await this.checkAllPermissions();
     return permissions.usageStats && permissions.overlay && permissions.accessibility;
-  },
-
-  // Event subscription
-  addAppBlockedListener(callback: (packageName: string) => void): () => void {
-    if (!eventEmitter) return () => {};
-    const subscription = eventEmitter.addListener('onAppBlocked', callback);
-    return () => subscription.remove();
   },
 };
 

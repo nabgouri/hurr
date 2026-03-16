@@ -1,3 +1,9 @@
 {
-  "platforms": ["android"]
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "com.hur.blocker.blocker.AppBlockerModule",
+      "com.hur.blocker.admin.DeviceAdminModule"
+    ]
+  }
 }

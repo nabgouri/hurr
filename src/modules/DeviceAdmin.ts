@@ -1,18 +1,10 @@
-import { NativeModules, TurboModuleRegistry, Platform, type TurboModule } from 'react-native';
+import { requireNativeModule, Platform } from 'expo-modules-core';
 
-interface DeviceAdminModuleSpec extends TurboModule {
-  isDeviceAdminActive(): Promise<boolean>;
-  requestDeviceAdmin(): Promise<boolean>;
-  removeDeviceAdmin(): Promise<boolean>;
-}
+const DeviceAdminModule = Platform.OS === 'android'
+  ? requireNativeModule('DeviceAdminModule')
+  : null;
 
-// TurboModuleRegistry first (lazy-loaded), fallback to legacy NativeModules bridge
-const DeviceAdminModule: DeviceAdminModuleSpec | null =
-  TurboModuleRegistry.get<DeviceAdminModuleSpec>('DeviceAdminModule') ??
-  NativeModules.DeviceAdminModule ??
-  null;
-
-const isModuleAvailable = Platform.OS === 'android' && DeviceAdminModule != null;
+const isModuleAvailable = DeviceAdminModule != null;
 
 export const DeviceAdmin = {
   isAvailable(): boolean {
