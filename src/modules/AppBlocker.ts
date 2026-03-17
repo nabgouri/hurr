@@ -130,6 +130,16 @@ export const AppBlocker = {
     }
   },
 
+  async getAppIcon(packageName: string): Promise<string> {
+    if (!isModuleAvailable) return '';
+    try {
+      return await AppBlockerModule!.getAppIcon(packageName);
+    } catch (error) {
+      console.error('Error getting app icon:', error);
+      return '';
+    }
+  },
+
   async getInstalledApps(): Promise<InstalledApp[]> {
     if (!isModuleAvailable) return [];
     try {
@@ -181,6 +191,90 @@ export const AppBlocker = {
     } catch (error) {
       console.error('Error getting blocked domains:', error);
       return [];
+    }
+  },
+
+  // --- Block Unsupported Browsers ---
+
+  async setBlockUnsupportedBrowsers(enabled: boolean): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setBlockUnsupportedBrowsers(enabled);
+    } catch (error) {
+      console.error('Error setting block unsupported browsers:', error);
+      return false;
+    }
+  },
+
+  async getBlockUnsupportedBrowsers(): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.getBlockUnsupportedBrowsers();
+    } catch (error) {
+      console.error('Error getting block unsupported browsers:', error);
+      return false;
+    }
+  },
+
+  // --- Blocked Screen Customization ---
+
+  async setBlockedScreenMessage(message: string): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setBlockedScreenMessage(message);
+    } catch (error) {
+      console.error('Error setting blocked screen message:', error);
+      return false;
+    }
+  },
+
+  async getBlockedScreenMessage(): Promise<string | null> {
+    if (!isModuleAvailable) return null;
+    try {
+      return await AppBlockerModule!.getBlockedScreenMessage();
+    } catch (error) {
+      console.error('Error getting blocked screen message:', error);
+      return null;
+    }
+  },
+
+  async setBlockedScreenCountdown(seconds: number): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setBlockedScreenCountdown(seconds);
+    } catch (error) {
+      console.error('Error setting blocked screen countdown:', error);
+      return false;
+    }
+  },
+
+  async getBlockedScreenCountdown(): Promise<number> {
+    if (!isModuleAvailable) return 3;
+    try {
+      return await AppBlockerModule!.getBlockedScreenCountdown();
+    } catch (error) {
+      console.error('Error getting blocked screen countdown:', error);
+      return 3;
+    }
+  },
+
+  async setRedirectUrl(url: string): Promise<boolean> {
+    if (!isModuleAvailable) return false;
+    try {
+      return await AppBlockerModule!.setRedirectUrl(url);
+    } catch (error) {
+      console.error('Error setting redirect URL:', error);
+      return false;
+    }
+  },
+
+  async getRedirectUrl(): Promise<string | null> {
+    if (!isModuleAvailable) return null;
+    try {
+      return await AppBlockerModule!.getRedirectUrl();
+    } catch (error) {
+      console.error('Error getting redirect URL:', error);
+      return null;
     }
   },
 

@@ -24,22 +24,15 @@ export default function ToggleItem({
 }: ToggleItemProps) {
   return (
     <View style={[styles.container, disabled && styles.containerDisabled]}>
-      <View style={styles.labelContainer}>
-        <View style={styles.textContainer}>
-          <Text style={[styles.title, disabled && styles.titleDisabled]}>{title}</Text>
-          {subtitle && (
-            <Text
-              selectable
-              style={[styles.subtitle, disabled && styles.subtitleDisabled]}
-            >
-              {subtitle}
-            </Text>
-          )}
-        </View>
-        {showInfo && (
-          <TouchableOpacity onPress={onInfoPress} style={styles.infoButton}>
-            <Info size={18} color={colors.textMuted} strokeWidth={1.5} />
-          </TouchableOpacity>
+      <View style={styles.textContainer}>
+        <Text style={[styles.title, disabled && styles.titleDisabled]}>{title}</Text>
+        {subtitle && (
+          <Text
+            selectable
+            style={[styles.subtitle, disabled && styles.subtitleDisabled]}
+          >
+            {subtitle}
+          </Text>
         )}
       </View>
       <Switch
@@ -49,6 +42,11 @@ export default function ToggleItem({
         trackColor={{ false: colors.borderLight, true: colors.primaryLight + '80' }}
         thumbColor={value ? colors.primary : colors.border}
       />
+      {showInfo && (
+        <TouchableOpacity onPress={onInfoPress} style={styles.infoButton}>
+          <Info size={22} color={colors.textMuted} strokeWidth={1.5} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -57,18 +55,11 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 14,
     gap: 12,
   },
   containerDisabled: {
     opacity: 0.45,
-  },
-  labelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 8,
   },
   textContainer: {
     flex: 1,

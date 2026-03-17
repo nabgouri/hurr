@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  AppState,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +16,6 @@ import { Accessibility, Square, CheckSquare } from 'lucide-react-native';
 import { colors, fonts, fontSizes } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { AppBlocker } from '../modules';
-import { useOnAppActive } from '../contexts/AppStateContext';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -23,12 +24,16 @@ export default function PermissionSetupScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [agreed, setAgreed] = useState(false);
   const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const openedSettings = useRef(false);
 
   const checkAccessibility = useCallback(async () => {
     const enabled = await AppBlocker.isAccessibilityServiceEnabled();
     setIsAccessibilityEnabled(enabled);
     if (enabled) {
       navigation.replace('MainTabs');
+    } else {
+      setChecking(false);
     }
   }, [navigation]);
 
@@ -36,15 +41,36 @@ export default function PermissionSetupScreen() {
     checkAccessibility();
   }, [checkAccessibility]);
 
-  useOnAppActive(checkAccessibility);
+  // Listen directly to AppState (no debounce) so the check fires immediately on return
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && openedSettings.current) {
+        setChecking(true);
+        checkAccessibility();
+      }
+    });
+    return () => subscription.remove();
+  }, [checkAccessibility]);
 
   const handleTurnOn = async () => {
+    openedSettings.current = true;
+    setChecking(true);
     await AppBlocker.openAccessibilitySettings();
   };
 
   const handleSkip = () => {
     navigation.replace('MainTabs');
   };
+
+  if (checking) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -215,5 +241,10 @@ const styles = StyleSheet.create({
   },
   turnOnButtonTextDisabled: {
     color: colors.textMuted,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

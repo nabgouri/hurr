@@ -6,12 +6,18 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.util.Base64
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.io.ByteArrayOutputStream
 
 class AppBlockerModule : Module() {
 
@@ -24,6 +30,10 @@ class AppBlockerModule : Module() {
         private const val KEY_PARTNER_TYPE = "partner_type"
         private const val KEY_PARTNER_EMAIL = "partner_email"
         private const val KEY_PARTNER_TIME_DELAY = "partner_time_delay"
+        private const val KEY_BLOCKED_SCREEN_MESSAGE = "blocked_screen_message"
+        private const val KEY_BLOCKED_SCREEN_COUNTDOWN = "blocked_screen_countdown"
+        private const val KEY_REDIRECT_URL = "redirect_url"
+        private const val KEY_BLOCK_UNSUPPORTED_BROWSERS = "block_unsupported_browsers"
 
         private var blockedPackages: MutableSet<String> = mutableSetOf()
         private var blockedKeywords: MutableSet<String> = mutableSetOf()
@@ -182,6 +192,45 @@ class AppBlockerModule : Module() {
                 }
         }
 
+        AsyncFunction("getAppIcon") { packageName: String ->
+            try {
+                val pm = context.packageManager
+                val drawable = pm.getApplicationIcon(packageName)
+                val bitmap = when {
+                    drawable is BitmapDrawable -> drawable.bitmap
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable -> {
+                        val bmp = Bitmap.createBitmap(
+                            drawable.intrinsicWidth.coerceAtLeast(1),
+                            drawable.intrinsicHeight.coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        val canvas = Canvas(bmp)
+                        drawable.setBounds(0, 0, canvas.width, canvas.height)
+                        drawable.draw(canvas)
+                        bmp
+                    }
+                    else -> {
+                        val bmp = Bitmap.createBitmap(
+                            drawable.intrinsicWidth.coerceAtLeast(1),
+                            drawable.intrinsicHeight.coerceAtLeast(1),
+                            Bitmap.Config.ARGB_8888
+                        )
+                        val canvas = Canvas(bmp)
+                        drawable.setBounds(0, 0, canvas.width, canvas.height)
+                        drawable.draw(canvas)
+                        bmp
+                    }
+                }
+                val scaled = Bitmap.createScaledBitmap(bitmap, 96, 96, true)
+                val stream = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.PNG, 80, stream)
+                val bytes = stream.toByteArray()
+                return@AsyncFunction Base64.encodeToString(bytes, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                return@AsyncFunction ""
+            }
+        }
+
         // --- Blocked Keywords ---
 
         AsyncFunction("setBlockedKeywords") { keywords: List<String> ->
@@ -226,6 +275,47 @@ class AppBlockerModule : Module() {
                 "email" to prefs.getString(KEY_PARTNER_EMAIL, null),
                 "timeDelay" to prefs.getInt(KEY_PARTNER_TIME_DELAY, 0)
             )
+        }
+
+        // --- Blocked Screen Customization ---
+
+        AsyncFunction("setBlockedScreenMessage") { message: String ->
+            getPrefs().edit().putString(KEY_BLOCKED_SCREEN_MESSAGE, message).apply()
+            return@AsyncFunction true
+        }
+
+        AsyncFunction("getBlockedScreenMessage") {
+            return@AsyncFunction getPrefs().getString(KEY_BLOCKED_SCREEN_MESSAGE, null)
+        }
+
+        AsyncFunction("setBlockedScreenCountdown") { seconds: Int ->
+            getPrefs().edit().putInt(KEY_BLOCKED_SCREEN_COUNTDOWN, seconds).apply()
+            return@AsyncFunction true
+        }
+
+        AsyncFunction("getBlockedScreenCountdown") {
+            return@AsyncFunction getPrefs().getInt(KEY_BLOCKED_SCREEN_COUNTDOWN, 3)
+        }
+
+        AsyncFunction("setRedirectUrl") { url: String ->
+            getPrefs().edit().putString(KEY_REDIRECT_URL, url).apply()
+            return@AsyncFunction true
+        }
+
+        AsyncFunction("getRedirectUrl") {
+            return@AsyncFunction getPrefs().getString(KEY_REDIRECT_URL, null)
+        }
+
+        // --- Block Unsupported Browsers ---
+
+        AsyncFunction("setBlockUnsupportedBrowsers") { enabled: Boolean ->
+            getPrefs().edit().putBoolean(KEY_BLOCK_UNSUPPORTED_BROWSERS, enabled).apply()
+            AppBlockerService.instance?.setBlockUnsupportedBrowsers(enabled)
+            return@AsyncFunction true
+        }
+
+        AsyncFunction("getBlockUnsupportedBrowsers") {
+            return@AsyncFunction getPrefs().getBoolean(KEY_BLOCK_UNSUPPORTED_BROWSERS, false)
         }
 
         // --- Battery Optimization ---

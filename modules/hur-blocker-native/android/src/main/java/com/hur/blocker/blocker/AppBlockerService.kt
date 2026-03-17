@@ -5,6 +5,10 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -14,10 +18,15 @@ class AppBlockerService : AccessibilityService() {
 
     companion object {
         private const val TAG = "HurBlocker"
+        var instance: AppBlockerService? = null
     }
 
     private var currentBlockedPackage: String? = null
     private var currentBlockReason: String? = null
+
+    // Unsupported browser blocking
+    private var blockUnsupportedBrowsersEnabled: Boolean = false
+    private val browserAppCache: MutableMap<String, Boolean> = mutableMapOf()
 
     // Debounce state
     private var lastCheckedUrl: String? = null
@@ -47,6 +56,26 @@ class AppBlockerService : AccessibilityService() {
         "com.kiwibrowser.browser" to "com.kiwibrowser.browser:id/url_bar",
     )
 
+    // Social media apps to scan visible text for blocked keywords
+    private val socialMediaPackages = setOf(
+        "com.google.android.youtube",
+        "com.google.android.youtube.kids",
+        "com.facebook.katana",
+        "com.facebook.lite",
+        "com.instagram.android",
+        "com.zhiliaoapp.musically",  // TikTok
+        "com.twitter.android",
+        "com.snapchat.android",
+        "com.reddit.frontpage",
+        "com.pinterest",
+        "org.telegram.messenger",
+        "com.whatsapp",
+    )
+
+    // Debounce state for social media scanning
+    private var lastSocialScanTime: Long = 0
+    private val SOCIAL_SCAN_INTERVAL_MS = 1500L
+
     // Packages to always skip
     private val skipPackages = setOf(
         "com.android.systemui",
@@ -61,7 +90,10 @@ class AppBlockerService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         AppBlockerModule.restoreFromPrefs(applicationContext)
+        val prefs = getSharedPreferences("hur_blocker", Context.MODE_PRIVATE)
+        blockUnsupportedBrowsersEnabled = prefs.getBoolean("block_unsupported_browsers", false)
         Log.d(TAG, "Service connected — packages=${AppBlockerModule.getBlockedPackages().size}, " +
             "keywords=${AppBlockerModule.getBlockedKeywords().size}, " +
             "domains=${AppBlockerModule.getBlockedDomains().size}")
@@ -220,6 +252,8 @@ class AppBlockerService : AccessibilityService() {
 
         if (AppBlockerModule.isPackageBlocked(packageName)) {
             showBlockerOverlay(packageName, "app")
+        } else if (blockUnsupportedBrowsersEnabled && isUnsupportedBrowser(packageName)) {
+            showBlockerOverlay(packageName, "unsupported_browser")
         } else {
             hideBlockerOverlay()
         }
@@ -228,13 +262,20 @@ class AppBlockerService : AccessibilityService() {
     /**
      * Handles content/text changes inside apps.
      * Scans browser URL bars for blocked domains/keywords.
+     * Also scans visible text in social media apps for blocked keywords.
      */
     private fun handleContentChanged(event: AccessibilityEvent, packageName: String) {
-        if (!isBrowser(packageName)) {
-            Log.d(TAG, "Not a browser: $packageName")
-            return
+        if (isBrowser(packageName)) {
+            handleBrowserContentChanged(packageName)
+        } else if (socialMediaPackages.contains(packageName) &&
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            // Only scan social media on content changed (search results loaded),
+            // not on text changed (user still typing in search bar)
+            handleSocialMediaContentChanged(packageName)
         }
+    }
 
+    private fun handleBrowserContentChanged(packageName: String) {
         Log.d(TAG, "Scanning browser: $packageName")
 
         val rootNode = try {
@@ -260,6 +301,62 @@ class AppBlockerService : AccessibilityService() {
         } finally {
             rootNode.recycle()
         }
+    }
+
+    /**
+     * Scans visible text nodes in social media apps for blocked keywords.
+     * Uses a longer debounce interval to avoid excessive processing.
+     */
+    private fun handleSocialMediaContentChanged(packageName: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastSocialScanTime < SOCIAL_SCAN_INTERVAL_MS) return
+        lastSocialScanTime = now
+
+        val keywords = AppBlockerModule.getBlockedKeywords()
+        if (keywords.isEmpty()) return
+
+        val rootNode = try {
+            rootInActiveWindow
+        } catch (e: Exception) {
+            null
+        } ?: return
+
+        try {
+            val matchedKeyword = scanNodeTreeForKeywords(rootNode, keywords)
+            if (matchedKeyword != null) {
+                Log.d(TAG, "Social media keyword blocked: $matchedKeyword in $packageName")
+                showBlockerOverlay(packageName, "content", matchedKeyword)
+            }
+        } finally {
+            rootNode.recycle()
+        }
+    }
+
+    /**
+     * Recursively scans the accessibility node tree for any blocked keyword
+     * in visible text content. Returns the first matched keyword or null.
+     */
+    private fun scanNodeTreeForKeywords(
+        node: AccessibilityNodeInfo,
+        keywords: Set<String>
+    ): String? {
+        val text = node.text?.toString()?.lowercase()
+        if (text != null && text.length > 1) {
+            for (keyword in keywords) {
+                if (text.contains(keyword)) return keyword
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (e: Exception) { null } ?: continue
+            try {
+                val result = scanNodeTreeForKeywords(child, keywords)
+                if (result != null) return result
+            } finally {
+                child.recycle()
+            }
+        }
+        return null
     }
 
     /**
@@ -360,25 +457,7 @@ class AppBlockerService : AccessibilityService() {
     private var lastBlockTime: Long = 0
     private val BLOCK_COOLDOWN_MS = 2000L // Prevent rapid re-launching
 
-    /**
-     * Launches BlockerActivity on top of the blocked content.
-     * When user taps close, they're redirected to google.com.
-     */
-    private fun showBlockerOverlay(packageName: String, reason: String, matchedTrigger: String? = null) {
-        // Prevent rapid re-launching of blocker activity
-        val now = System.currentTimeMillis()
-        if (now - lastBlockTime < BLOCK_COOLDOWN_MS) return
-        lastBlockTime = now
-
-        currentBlockedPackage = packageName
-        currentBlockReason = reason
-
-        // For uninstall attempts: press Home first to dismiss Settings' task stack,
-        // so the user can't press back to return to the deactivation page
-        if (reason == "uninstall") {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
-
+    private fun launchBlockerActivity(reason: String, packageName: String, matchedTrigger: String?) {
         try {
             val intent = Intent(this, BlockerActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -393,6 +472,33 @@ class AppBlockerService : AccessibilityService() {
         }
     }
 
+    /**
+     * Launches BlockerActivity on top of the blocked content.
+     * When user taps close, they're redirected to google.com.
+     */
+    private fun showBlockerOverlay(packageName: String, reason: String, matchedTrigger: String? = null) {
+        // Prevent rapid re-launching of blocker activity (skip cooldown for uninstall —
+        // those are high-priority and the user actively navigated to trigger them)
+        if (reason != "uninstall") {
+            val now = System.currentTimeMillis()
+            if (now - lastBlockTime < BLOCK_COOLDOWN_MS) return
+            lastBlockTime = now
+        }
+
+        currentBlockedPackage = packageName
+        currentBlockReason = reason
+
+        if (reason == "uninstall") {
+            // Press BACK to dismiss the uninstall dialog / settings page first.
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            Handler(Looper.getMainLooper()).postDelayed({
+                launchBlockerActivity(reason, packageName, matchedTrigger)
+            }, 300)
+        } else {
+            launchBlockerActivity(reason, packageName, matchedTrigger)
+        }
+    }
+
     private fun hideBlockerOverlay() {
         currentBlockedPackage = null
         currentBlockReason = null
@@ -402,8 +508,31 @@ class AppBlockerService : AccessibilityService() {
         // Nothing to clean up — activity manages itself
     }
 
+    fun setBlockUnsupportedBrowsers(enabled: Boolean) {
+        blockUnsupportedBrowsersEnabled = enabled
+    }
+
+    private fun isActualBrowserApp(packageName: String): Boolean {
+        browserAppCache[packageName]?.let { return it }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+        intent.setPackage(packageName)
+        val result = packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY).isNotEmpty()
+        browserAppCache[packageName] = result
+        return result
+    }
+
+    private fun isUnsupportedBrowser(packageName: String): Boolean {
+        if (browserUrlBarIds.containsKey(packageName)) return false
+        return isActualBrowserApp(packageName) || packageName.contains("browser") || packageName.contains("webview")
+    }
+
+    fun goHome() {
+        performGlobalAction(GLOBAL_ACTION_HOME)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         hideBlockerOverlay()
     }
 }

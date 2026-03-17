@@ -4,9 +4,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Modal,
   TouchableOpacity,
-  Pressable,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -16,10 +15,14 @@ import {
   ShieldCheck,
   Lock,
   Clock,
+  SquarePen,
 } from 'lucide-react-native';
 import { colors, fonts, fontSizes, globalStyles } from '../theme';
 import SectionCard from '../components/SectionCard';
 import ToggleItem from '../components/ToggleItem';
+import EditableItem from '../components/EditableItem';
+import SettingsModal from '../components/SettingsModal';
+import InfoModal from '../components/InfoModal';
 import { AppBlocker, DeviceAdmin } from '../modules';
 import { useOnAppActive } from '../contexts/AppStateContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +31,7 @@ const PROTECTION_END_KEY = 'uninstall_protection_end';
 const PROTECTION_DAYS_KEY = 'uninstall_protection_days';
 
 const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
+const COUNTDOWN_OPTIONS = [3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60, 120, 240, 300];
 
 export default function BlockingScreen() {
   const { t } = useTranslation();
@@ -41,6 +45,24 @@ export default function BlockingScreen() {
   const [daysRemaining, setDaysRemaining] = useState(0);
   const [showDaysModal, setShowDaysModal] = useState(false);
   const [selectedDays, setSelectedDays] = useState<number>(30);
+
+  // Customize blocked screen state
+  const [blockedScreenMessage, setBlockedScreenMessage] = useState<string | null>(null);
+  const [blockedScreenCountdown, setBlockedScreenCountdown] = useState(3);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showCountdownModal, setShowCountdownModal] = useState(false);
+  const [showRedirectModal, setShowRedirectModal] = useState(false);
+  const [tempMessage, setTempMessage] = useState('');
+  const [tempCountdown, setTempCountdown] = useState(3);
+  const [tempRedirectUrl, setTempRedirectUrl] = useState('');
+
+  // Info modal state
+  const [infoContent, setInfoContent] = useState<{ title: string; body: string } | null>(null);
+
+  const showInfo = (titleKey: string, bodyKey: string) => {
+    setInfoContent({ title: t(titleKey), body: t(bodyKey) });
+  };
 
   // Placeholder states (future features)
   const [imageVideoSearchBlocked, setImageVideoSearchBlocked] = useState(false);
@@ -60,6 +82,18 @@ export default function BlockingScreen() {
       // Check device admin status
       const adminActive = await DeviceAdmin.isDeviceAdminActive();
       setIsDeviceAdminActive(adminActive);
+
+      // Load blocked screen customization (parallel)
+      const [savedMessage, savedCountdown, savedRedirectUrl, savedBlockUnsupported] = await Promise.all([
+        AppBlocker.getBlockedScreenMessage(),
+        AppBlocker.getBlockedScreenCountdown(),
+        AppBlocker.getRedirectUrl(),
+        AppBlocker.getBlockUnsupportedBrowsers(),
+      ]);
+      setBlockedScreenMessage(savedMessage);
+      setBlockedScreenCountdown(savedCountdown);
+      setRedirectUrl(savedRedirectUrl);
+      setBlockUnsupportedBrowsers(savedBlockUnsupported);
 
       // Load protection end date
       const endStr = await AsyncStorage.getItem(PROTECTION_END_KEY);
@@ -100,9 +134,13 @@ export default function BlockingScreen() {
     await AppBlocker.openAccessibilitySettings();
   };
 
+  const handleBlockUnsupportedBrowsersToggle = async (value: boolean) => {
+    setBlockUnsupportedBrowsers(value);
+    await AppBlocker.setBlockUnsupportedBrowsers(value);
+  };
+
   const handleUninstallProtectionToggle = async (value: boolean) => {
     if (value) {
-      // Show days selection modal
       setSelectedDays(30);
       setShowDaysModal(true);
     } else {
@@ -118,12 +156,50 @@ export default function BlockingScreen() {
       const endDate = Date.now() + selectedDays * 24 * 60 * 60 * 1000;
       await AsyncStorage.setItem(PROTECTION_END_KEY, endDate.toString());
       await AsyncStorage.setItem(PROTECTION_DAYS_KEY, selectedDays.toString());
-      // Sync to native SharedPreferences so the accessibility service can read it
       await AppBlocker.setUninstallProtectionEnd(endDate);
       setProtectionEndDate(endDate);
       setDaysRemaining(selectedDays);
       setIsDeviceAdminActive(true);
     }
+  };
+
+  const handleSaveMessage = async () => {
+    const msg = tempMessage.trim();
+    if (msg) {
+      await AppBlocker.setBlockedScreenMessage(msg);
+      setBlockedScreenMessage(msg);
+    } else {
+      await AppBlocker.setBlockedScreenMessage('');
+      setBlockedScreenMessage(null);
+    }
+    setShowMessageModal(false);
+  };
+
+  const handleSaveCountdown = async () => {
+    await AppBlocker.setBlockedScreenCountdown(tempCountdown);
+    setBlockedScreenCountdown(tempCountdown);
+    setShowCountdownModal(false);
+  };
+
+  const handleSaveRedirectUrl = async () => {
+    const url = tempRedirectUrl.trim();
+    if (url) {
+      await AppBlocker.setRedirectUrl(url);
+      setRedirectUrl(url);
+    } else {
+      await AppBlocker.setRedirectUrl('');
+      setRedirectUrl(null);
+    }
+    setShowRedirectModal(false);
+  };
+
+  const formatCountdownValue = (seconds: number) => {
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    return `${seconds} ${seconds === 1 ? t('blocking.second') : t('blocking.seconds')}`;
   };
 
   const getProtectionSubtitle = () => {
@@ -169,36 +245,48 @@ export default function BlockingScreen() {
             value={isAccessibilityEnabled}
             onValueChange={handleAdultContentToggle}
             disabled={isLoading}
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockAdultContent', 'blocking.infoBlockAdultContent')}
           />
           <ToggleItem
             title={t('blocking.blockImageVideoSearch')}
             value={imageVideoSearchBlocked}
             onValueChange={setImageVideoSearchBlocked}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockImageVideoSearch', 'blocking.infoBlockImageVideoSearch')}
           />
           <ToggleItem
             title={t('blocking.blockFacebookReels')}
             value={facebookReelsBlocked}
             onValueChange={setFacebookReelsBlocked}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockFacebookReels', 'blocking.infoBlockFacebookReels')}
           />
           <ToggleItem
             title={t('blocking.blockYoutubeShorts')}
             value={youtubeShortsBlocked}
             onValueChange={setYoutubeShortsBlocked}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockYoutubeShorts', 'blocking.infoBlockYoutubeShorts')}
           />
           <ToggleItem
             title={t('blocking.blockWhatsappChannels')}
             value={whatsappChannelsBlocked}
             onValueChange={setWhatsappChannelsBlocked}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockWhatsappChannels', 'blocking.infoBlockWhatsappChannels')}
           />
           <ToggleItem
             title={t('blocking.blockTelegramSearch')}
             value={telegramSearchBlocked}
             onValueChange={setTelegramSearchBlocked}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockTelegramSearch', 'blocking.infoBlockTelegramSearch')}
           />
         </SectionCard>
 
@@ -210,18 +298,55 @@ export default function BlockingScreen() {
             value={isDeviceAdminActive}
             onValueChange={handleUninstallProtectionToggle}
             disabled={isLoading}
+            showInfo
+            onInfoPress={() => showInfo('blocking.uninstallProtection', 'blocking.infoUninstallProtection')}
           />
           <ToggleItem
             title={t('blocking.blockUnsupportedBrowsers')}
             value={blockUnsupportedBrowsers}
-            onValueChange={setBlockUnsupportedBrowsers}
-            disabled
+            onValueChange={handleBlockUnsupportedBrowsersToggle}
+            disabled={isLoading || !isAccessibilityEnabled}
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockUnsupportedBrowsers', 'blocking.infoBlockUnsupportedBrowsers')}
           />
           <ToggleItem
             title={t('blocking.blockNewlyInstalledApps')}
             value={blockNewlyInstalledApps}
             onValueChange={setBlockNewlyInstalledApps}
             disabled
+            showInfo
+            onInfoPress={() => showInfo('blocking.blockNewlyInstalledApps', 'blocking.infoBlockNewlyInstalledApps')}
+          />
+        </SectionCard>
+
+        {/* Customize Blocked Screen Section */}
+        <SectionCard icon={SquarePen} title={t('blocking.customizeBlockedScreen')}>
+          <EditableItem
+            title={t('blocking.blockedScreenMessage')}
+            value={blockedScreenMessage || t('blocking.notSet')}
+            onPress={() => {
+              setTempMessage(blockedScreenMessage || '');
+              setShowMessageModal(true);
+            }}
+            onInfoPress={() => showInfo('blocking.blockedScreenMessage', 'blocking.infoBlockedScreenMessage')}
+          />
+          <EditableItem
+            title={t('blocking.blockedScreenCountdown')}
+            value={formatCountdownValue(blockedScreenCountdown)}
+            onPress={() => {
+              setTempCountdown(blockedScreenCountdown);
+              setShowCountdownModal(true);
+            }}
+            onInfoPress={() => showInfo('blocking.blockedScreenCountdown', 'blocking.infoBlockedScreenCountdown')}
+          />
+          <EditableItem
+            title={t('blocking.redirectAfterClosing')}
+            value={redirectUrl || t('blocking.notSet')}
+            onPress={() => {
+              setTempRedirectUrl(redirectUrl || '');
+              setShowRedirectModal(true);
+            }}
+            onInfoPress={() => showInfo('blocking.redirectUrl', 'blocking.infoRedirectUrl')}
           />
         </SectionCard>
 
@@ -229,69 +354,134 @@ export default function BlockingScreen() {
       </ScrollView>
 
       {/* Days Selection Modal */}
-      <Modal
+      <SettingsModal
         visible={showDaysModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDaysModal(false)}
+        onClose={() => setShowDaysModal(false)}
+        onSave={handleActivateProtection}
+        icon={Clock}
+        title={t('blocking.selectProtectionDays')}
+        description={t('blocking.selectProtectionDaysDesc')}
+        saveLabel={t('blocking.activate')}
+        cancelLabel={t('common.cancel')}
+        saveIcon={<ShieldCheck size={18} color={colors.textOnPrimary} strokeWidth={2} />}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowDaysModal(false)}>
-          <Pressable style={styles.modalContent} onPress={() => {}}>
-            {/* Modal Icon */}
-            <View style={styles.modalIconWrap}>
-              <Clock size={28} color={colors.primary} strokeWidth={1.5} />
-            </View>
+        <View style={styles.optionGrid}>
+          {DAY_OPTIONS.map((days) => {
+            const isSelected = selectedDays === days;
+            return (
+              <TouchableOpacity
+                key={days}
+                style={[
+                  styles.optionPill,
+                  styles.optionPillWide,
+                  isSelected && styles.optionPillSelected,
+                ]}
+                onPress={() => setSelectedDays(days)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.optionPillText,
+                    isSelected && styles.optionPillTextSelected,
+                  ]}
+                >
+                  {t(`blocking.days${days}`)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </SettingsModal>
 
-            <Text style={styles.modalTitle}>{t('blocking.selectProtectionDays')}</Text>
-            <Text selectable style={styles.modalDesc}>
-              {t('blocking.selectProtectionDaysDesc')}
-            </Text>
+      {/* Message Modal */}
+      <SettingsModal
+        visible={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        onSave={handleSaveMessage}
+        icon={SquarePen}
+        title={t('blocking.blockedScreenMessage')}
+        description={t('blocking.enterMessage')}
+        saveLabel={t('common.save')}
+        cancelLabel={t('common.cancel')}
+      >
+        <TextInput
+          style={styles.textInputField}
+          value={tempMessage}
+          onChangeText={setTempMessage}
+          placeholder={t('blocking.defaultBlockedMessage')}
+          placeholderTextColor={colors.textMuted}
+          multiline
+        />
+      </SettingsModal>
 
-            <View style={styles.daysGrid}>
-              {DAY_OPTIONS.map((days) => {
-                const isSelected = selectedDays === days;
-                return (
-                  <TouchableOpacity
-                    key={days}
-                    style={[
-                      styles.dayOption,
-                      isSelected && styles.dayOptionSelected,
-                    ]}
-                    onPress={() => setSelectedDays(days)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.dayOptionText,
-                        isSelected && styles.dayOptionTextSelected,
-                      ]}
-                    >
-                      {t(`blocking.days${days}`)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+      {/* Countdown Modal */}
+      <SettingsModal
+        visible={showCountdownModal}
+        onClose={() => setShowCountdownModal(false)}
+        onSave={handleSaveCountdown}
+        icon={Clock}
+        title={t('blocking.blockedScreenCountdown')}
+        saveLabel={t('common.save')}
+        cancelLabel={t('common.cancel')}
+      >
+        <View style={styles.optionGrid}>
+          {COUNTDOWN_OPTIONS.map((seconds) => {
+            const isSelected = tempCountdown === seconds;
+            return (
+              <TouchableOpacity
+                key={seconds}
+                style={[
+                  styles.optionPill,
+                  isSelected && styles.optionPillSelected,
+                ]}
+                onPress={() => setTempCountdown(seconds)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.optionPillText,
+                    isSelected && styles.optionPillTextSelected,
+                  ]}
+                >
+                  {formatCountdownValue(seconds)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </SettingsModal>
 
-            <TouchableOpacity
-              style={styles.activateButton}
-              onPress={handleActivateProtection}
-              activeOpacity={0.8}
-            >
-              <ShieldCheck size={18} color={colors.textOnPrimary} strokeWidth={2} />
-              <Text style={styles.activateButtonText}>{t('blocking.activate')}</Text>
-            </TouchableOpacity>
+      {/* Redirect URL Modal */}
+      <SettingsModal
+        visible={showRedirectModal}
+        onClose={() => setShowRedirectModal(false)}
+        onSave={handleSaveRedirectUrl}
+        icon={SquarePen}
+        title={t('blocking.redirectUrl')}
+        description={t('blocking.redirectAfterClosing')}
+        saveLabel={t('common.save')}
+        cancelLabel={t('common.cancel')}
+      >
+        <TextInput
+          style={styles.textInputField}
+          value={tempRedirectUrl}
+          onChangeText={setTempRedirectUrl}
+          placeholder="https://example.com"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="url"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </SettingsModal>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowDaysModal(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Info Modal (shared) */}
+      <InfoModal
+        visible={infoContent !== null}
+        onClose={() => setInfoContent(null)}
+        title={infoContent?.title ?? ''}
+        body={infoContent?.body ?? ''}
+        closeLabel={t('blocking.gotIt')}
+      />
     </SafeAreaView>
   );
 }
@@ -339,50 +529,8 @@ const styles = StyleSheet.create({
     height: 8,
   },
 
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderCurve: 'continuous',
-    padding: 28,
-    width: '100%',
-    maxWidth: 360,
-    alignItems: 'center',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
-  },
-  modalIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderCurve: 'continuous',
-    backgroundColor: colors.surfaceVariant,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontFamily: fonts.bold,
-    fontSize: fontSizes.xl,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  modalDesc: {
-    fontFamily: fonts.regular,
-    fontSize: fontSizes.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: fontSizes.sm * 1.6,
-    marginBottom: 24,
-  },
-  daysGrid: {
+  // Shared modal content styles
+  optionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
@@ -390,58 +538,49 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     width: '100%',
   },
-  dayOption: {
+  optionPill: {
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     borderRadius: 12,
     borderCurve: 'continuous',
     borderWidth: 1.5,
     borderColor: colors.borderLight,
     backgroundColor: colors.background,
-    minWidth: 85,
+    minWidth: 65,
     alignItems: 'center',
   },
-  dayOptionSelected: {
+  optionPillWide: {
+    minWidth: 85,
+    paddingHorizontal: 18,
+  },
+  optionPillSelected: {
     borderColor: colors.primary,
     backgroundColor: colors.protectedBackground,
     boxShadow: '0 0 0 1px ' + colors.primaryLight + '40',
   },
-  dayOptionText: {
+  optionPillText: {
     fontFamily: fonts.medium,
     fontSize: fontSizes.sm,
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
   },
-  dayOptionTextSelected: {
+  optionPillTextSelected: {
     color: colors.primary,
     fontFamily: fonts.bold,
   },
-  activateButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
+  textInputField: {
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: colors.borderLight,
+    borderRadius: 12,
     borderCurve: 'continuous',
-    paddingVertical: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    width: '100%',
-    marginBottom: 10,
-    boxShadow: '0 2px 8px ' + colors.primary + '30',
-  },
-  activateButtonText: {
-    fontFamily: fonts.bold,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontFamily: fonts.regular,
     fontSize: fontSizes.md,
-    color: colors.textOnPrimary,
-  },
-  cancelButton: {
-    paddingVertical: 10,
-    alignItems: 'center',
-    width: '100%',
-  },
-  cancelButtonText: {
-    fontFamily: fonts.medium,
-    fontSize: fontSizes.md,
-    color: colors.textMuted,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
+    marginBottom: 24,
+    minHeight: 48,
   },
 });

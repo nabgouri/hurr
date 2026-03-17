@@ -27,7 +27,6 @@ class BlockerActivity : Activity() {
         const val EXTRA_REASON = "reason"
         const val EXTRA_TRIGGER = "trigger"
         const val EXTRA_BROWSER_PACKAGE = "browser_package"
-        const val COUNTDOWN_SECONDS = 3
     }
 
     private var isDetailExpanded = false
@@ -39,6 +38,10 @@ class BlockerActivity : Activity() {
 
         setupImmersiveMode()
 
+        val prefs = getSharedPreferences("hur_blocker", Context.MODE_PRIVATE)
+        val countdownSeconds = prefs.getInt("blocked_screen_countdown", 3)
+        val customMessage = prefs.getString("blocked_screen_message", null)
+
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "app"
         val trigger = intent.getStringExtra(EXTRA_TRIGGER)
         val browserPackage = intent.getStringExtra(EXTRA_BROWSER_PACKAGE)
@@ -47,21 +50,40 @@ class BlockerActivity : Activity() {
             "content" -> {
                 setContentView(R.layout.content_blocker_overlay)
                 setupContentBlockerDetails(trigger, browserPackage)
+                if (!customMessage.isNullOrBlank()) {
+                    findViewById<TextView>(R.id.tvContentTitle)?.text = customMessage
+                }
                 val btn = findViewById<Button>(R.id.btnContentGoBack)
-                setupCloseButtonCountdown(btn) { navigateToSafePage() }
+                val isBrowser = browserPackage != null && isBrowserPackage(browserPackage)
+                setupCloseButtonCountdown(btn, countdownSeconds) {
+                    if (isBrowser) navigateToSafePage() else navigateBackInApp()
+                }
+                setupWhyBlockedToggle()
+            }
+            "unsupported_browser" -> {
+                setContentView(R.layout.blocker_overlay)
+                setupAppBlockerDetails(browserPackage)
+                if (!customMessage.isNullOrBlank()) {
+                    findViewById<TextView>(R.id.tvTitle)?.text = customMessage
+                }
+                val btn = findViewById<Button>(R.id.btnGoBack)
+                setupCloseButtonCountdown(btn, countdownSeconds) { navigateHome() }
                 setupWhyBlockedToggle()
             }
             "uninstall" -> {
                 setContentView(R.layout.uninstall_blocker_overlay)
                 setupUninstallDetails()
                 val btn = findViewById<Button>(R.id.btnUninstallClose)
-                setupCloseButtonCountdown(btn) { navigateHome() }
+                setupCloseButtonCountdown(btn, countdownSeconds) { navigateHome() }
             }
             else -> {
                 setContentView(R.layout.blocker_overlay)
                 setupAppBlockerDetails(trigger)
+                if (!customMessage.isNullOrBlank()) {
+                    findViewById<TextView>(R.id.tvTitle)?.text = customMessage
+                }
                 val btn = findViewById<Button>(R.id.btnGoBack)
-                setupCloseButtonCountdown(btn) { navigateToSafePage() }
+                setupCloseButtonCountdown(btn, countdownSeconds) { navigateHome() }
                 setupWhyBlockedToggle()
             }
         }
@@ -70,16 +92,16 @@ class BlockerActivity : Activity() {
         animateEntrance()
     }
 
-    private fun setupCloseButtonCountdown(button: Button?, onClose: () -> Unit) {
+    private fun setupCloseButtonCountdown(button: Button?, countdownSeconds: Int, onClose: () -> Unit) {
         button ?: return
         val closeText = button.text.toString()
 
         // Disable and show countdown
         button.isEnabled = false
         button.alpha = 0.5f
-        button.text = "$closeText ($COUNTDOWN_SECONDS)"
+        button.text = "$closeText ($countdownSeconds)"
 
-        countdownTimer = object : CountDownTimer(COUNTDOWN_SECONDS * 1000L, 1000L) {
+        countdownTimer = object : CountDownTimer(countdownSeconds * 1000L, 1000L) {
             override fun onTick(millisUntilFinished: Long) {
                 val secondsLeft = (millisUntilFinished / 1000).toInt() + 1
                 button.text = "$closeText ($secondsLeft)"
@@ -160,13 +182,38 @@ class BlockerActivity : Activity() {
         }
     }
 
+    /**
+     * For social media blocks: press BACK via accessibility service to leave
+     * the search results page in the app underneath, then finish the overlay.
+     */
+    private fun navigateBackInApp() {
+        AppBlockerService.instance?.let { service ->
+            service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        }
+        // Delay finish so the BACK action hits the social media app underneath, not our overlay
+        window.decorView.postDelayed({ finish() }, 400)
+    }
+
+    private fun isBrowserPackage(packageName: String): Boolean {
+        return packageName.contains("browser") ||
+            packageName.contains("chrome") ||
+            packageName.contains("firefox") ||
+            packageName.contains("opera") ||
+            packageName.contains("duckduckgo") ||
+            packageName.contains("vivaldi") ||
+            packageName.contains("sbrowser") ||
+            packageName.contains("UCMobile") ||
+            packageName.contains("emmx") ||
+            packageName.contains("kiwi")
+    }
+
     private fun navigateHome() {
+        finish()
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(homeIntent)
-        finish()
     }
 
     private fun setupWhyBlockedToggle() {
@@ -288,7 +335,21 @@ class BlockerActivity : Activity() {
 
     private fun navigateToSafePage() {
         val browserPackage = intent.getStringExtra(EXTRA_BROWSER_PACKAGE)
-        val safeUrl = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))
+        val prefs = getSharedPreferences("hur_blocker", Context.MODE_PRIVATE)
+        val customUrl = prefs.getString("redirect_url", null)
+
+        val targetUrl = if (!customUrl.isNullOrBlank()) {
+            try {
+                Uri.parse(customUrl)
+                customUrl
+            } catch (_: Exception) {
+                "https://www.google.com"
+            }
+        } else {
+            "https://www.google.com"
+        }
+
+        val safeUrl = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl))
         safeUrl.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
 
         if (browserPackage != null) {
@@ -309,7 +370,11 @@ class BlockerActivity : Activity() {
         if (!isCountdownFinished) return
 
         val reason = intent.getStringExtra(EXTRA_REASON) ?: "app"
-        if (reason == "uninstall") {
+        val browserPackage = intent.getStringExtra(EXTRA_BROWSER_PACKAGE)
+        if (reason == "content") {
+            val isBrowser = browserPackage != null && isBrowserPackage(browserPackage)
+            if (isBrowser) navigateToSafePage() else navigateBackInApp()
+        } else if (reason == "uninstall") {
             navigateHome()
         } else {
             navigateToSafePage()

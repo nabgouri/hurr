@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StorageService, BlockedApp } from '../services/StorageService';
+import { AppBlocker } from '../modules/AppBlocker';
 
 export interface UseBlockedAppsReturn {
   blockedApps: BlockedApp[];
@@ -23,6 +24,8 @@ export function useBlockedApps(): UseBlockedAppsReturn {
       setError(null);
       const apps = await StorageService.getBlockedApps();
       setBlockedApps(apps);
+      // Sync with native module on load
+      await AppBlocker.setBlockedApps(apps.map((a) => a.packageName));
     } catch (err) {
       setError('Failed to load blocked apps');
       console.error('Error loading blocked apps:', err);
@@ -37,6 +40,7 @@ export function useBlockedApps(): UseBlockedAppsReturn {
 
   const addBlockedApp = useCallback(async (app: Omit<BlockedApp, 'blockedAt'>) => {
     try {
+      await AppBlocker.blockApp(app.packageName);
       await StorageService.addBlockedApp(app);
       await loadBlockedApps();
     } catch (err) {
@@ -47,6 +51,7 @@ export function useBlockedApps(): UseBlockedAppsReturn {
 
   const removeBlockedApp = useCallback(async (packageName: string) => {
     try {
+      await AppBlocker.unblockApp(packageName);
       await StorageService.removeBlockedApp(packageName);
       await loadBlockedApps();
     } catch (err) {
